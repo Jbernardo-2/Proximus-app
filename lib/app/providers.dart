@@ -8,8 +8,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/api.dart';
 import '../core/session.dart';
 import '../data/database.dart';
+import '../features/preventa/data/preventista_repository.dart';
 import '../sync/outbox_service.dart';
 import '../sync/sync_engine.dart';
+import '../sync/sync_manifest.dart';
 
 const appVersion = '0.1.0';
 const deviceName = 'Teléfono Android';
@@ -197,3 +199,34 @@ final syncStateProvider = StreamProvider.family<String?, String>((ref, key) {
 final lastSyncProvider = Provider<AsyncValue<DateTime?>>(
   (ref) => ref.watch(syncStateProvider('last_sync_at')).whenData((value) => value == null ? null : DateTime.tryParse(value)),
 );
+
+final manifestProvider = Provider<AsyncValue<SyncManifest?>>(
+  (ref) => ref.watch(syncStateProvider('manifest')).whenData(
+        (value) => value == null ? null : SyncManifest.decode(value),
+      ),
+);
+
+final outboxRowsProvider = StreamProvider<List<OutboxData>>(
+  (ref) => ref.watch(outboxProvider).watch(),
+);
+
+final preventistaRepositoryProvider = Provider<PreventistaRepository>(
+  (ref) => const PreventistaRepository(),
+);
+
+/// Today's route with what the phone recorded and the server has not reflected yet.
+final dailyRouteProvider = Provider<AsyncValue<DailyRoute>>((ref) {
+  final records = ref.watch(localRecordsProvider('route_activity'));
+  final outbox = ref.watch(outboxRowsProvider);
+  final pulledAt = ref.watch(syncStateProvider('pulled_at:route_activity'));
+
+  if (records.isLoading || outbox.isLoading || pulledAt.isLoading) return const AsyncLoading();
+  final error = records.error ?? outbox.error ?? pulledAt.error;
+  if (error != null) return AsyncError(error, StackTrace.current);
+
+  return AsyncData(ref.read(preventistaRepositoryProvider).mergeRouteActivity(
+        records: records.requireValue,
+        outbox: outbox.requireValue,
+        pulledAt: pulledAt.requireValue == null ? null : DateTime.tryParse(pulledAt.requireValue!),
+      ));
+});

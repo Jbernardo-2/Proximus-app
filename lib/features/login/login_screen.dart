@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../app/brand.dart';
 import '../../app/providers.dart';
 import '../../app/theme.dart';
 import '../../core/api.dart';
@@ -18,6 +19,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _password = TextEditingController();
   final _server = TextEditingController();
   bool _busy = false;
+  bool _showPassword = false;
   bool _showServer = false;
   String? _error;
 
@@ -45,13 +47,19 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     });
 
     try {
-      await ref.read(sessionProvider.notifier).login(
+      await ref
+          .read(sessionProvider.notifier)
+          .login(
             email: _email.text.trim(),
             password: _password.text,
             serverUrl: _server.text.trim(),
           );
     } on ApiException catch (error) {
-      setState(() => _error = error.isNetwork ? 'No se pudo conectar con el servidor. Revisa la señal o la dirección del servidor.' : error.message);
+      setState(
+        () => _error = error.isNetwork
+            ? 'No se pudo conectar con el servidor. Revisa la señal o la dirección del servidor.'
+            : error.message,
+      );
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -73,9 +81,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Text('Proximus', style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w800, color: AppColors.brand)),
-                    const SizedBox(height: 4),
-                    Text('Inicia sesión para trabajar con o sin señal.', style: TextStyle(color: AppColors.muted)),
+                    const Center(child: ProximusLogo()),
+                    const SizedBox(height: 12),
+                    Text(
+                      'Inicia sesión para trabajar con o sin señal.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: AppColors.muted),
+                    ),
                     const SizedBox(height: 32),
                     if (notice != null) ...[
                       _Banner(message: notice),
@@ -86,24 +98,53 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       decoration: const InputDecoration(labelText: 'Correo'),
                       keyboardType: TextInputType.emailAddress,
                       autofillHints: const [AutofillHints.email],
-                      validator: (value) => (value == null || !value.contains('@')) ? 'Escribe tu correo.' : null,
+                      validator: (value) =>
+                          (value == null || !value.contains('@'))
+                          ? 'Escribe tu correo.'
+                          : null,
                     ),
                     const SizedBox(height: 12),
                     TextFormField(
+                      key: const Key('login_password_field'),
                       controller: _password,
-                      decoration: const InputDecoration(labelText: 'Contraseña'),
-                      obscureText: true,
+                      decoration: InputDecoration(
+                        labelText: 'Contraseña',
+                        suffixIcon: IconButton(
+                          key: const Key('toggle_password_visibility'),
+                          tooltip: _showPassword
+                              ? 'Ocultar contraseña'
+                              : 'Mostrar contraseña',
+                          onPressed: () =>
+                              setState(() => _showPassword = !_showPassword),
+                          icon: Icon(
+                            _showPassword
+                                ? Icons.visibility_off_outlined
+                                : Icons.visibility_outlined,
+                          ),
+                        ),
+                      ),
+                      obscureText: !_showPassword,
+                      autocorrect: false,
+                      enableSuggestions: false,
                       autofillHints: const [AutofillHints.password],
                       onFieldSubmitted: (_) => _submit(),
-                      validator: (value) => (value == null || value.isEmpty) ? 'Escribe tu contraseña.' : null,
+                      validator: (value) => (value == null || value.isEmpty)
+                          ? 'Escribe tu contraseña.'
+                          : null,
                     ),
                     if (_showServer) ...[
                       const SizedBox(height: 12),
                       TextFormField(
                         controller: _server,
-                        decoration: const InputDecoration(labelText: 'Servidor', helperText: 'Ej. http://192.168.1.10/Proximus/public'),
+                        decoration: const InputDecoration(
+                          labelText: 'Servidor',
+                          helperText: 'Ej. http://192.168.1.10/Proximus/public',
+                        ),
                         keyboardType: TextInputType.url,
-                        validator: (value) => (value == null || !value.startsWith('http')) ? 'Dirección inválida.' : null,
+                        validator: (value) =>
+                            (value == null || !value.startsWith('http'))
+                            ? 'Dirección inválida.'
+                            : null,
                       ),
                     ],
                     if (_error != null) ...[
@@ -113,11 +154,19 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     const SizedBox(height: 24),
                     FilledButton(
                       onPressed: _busy ? null : _submit,
-                      child: _busy ? const SizedBox.square(dimension: 20, child: CircularProgressIndicator(strokeWidth: 2)) : const Text('Entrar'),
+                      child: _busy
+                          ? const SizedBox.square(
+                              dimension: 20,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Text('Entrar'),
                     ),
                     TextButton(
-                      onPressed: () => setState(() => _showServer = !_showServer),
-                      child: Text(_showServer ? 'Ocultar servidor' : 'Cambiar servidor'),
+                      onPressed: () =>
+                          setState(() => _showServer = !_showServer),
+                      child: Text(
+                        _showServer ? 'Ocultar servidor' : 'Cambiar servidor',
+                      ),
                     ),
                   ],
                 ),
@@ -137,8 +186,12 @@ class _Banner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(color: const Color(0xFFFFF4ED), borderRadius: BorderRadius.circular(12), border: Border.all(color: const Color(0xFFFED7AA))),
-        child: Text(message, style: const TextStyle(color: AppColors.danger)),
-      );
+    padding: const EdgeInsets.all(12),
+    decoration: BoxDecoration(
+      color: const Color(0xFFFFF4ED),
+      borderRadius: BorderRadius.circular(12),
+      border: Border.all(color: const Color(0xFFFED7AA)),
+    ),
+    child: Text(message, style: const TextStyle(color: AppColors.danger)),
+  );
 }

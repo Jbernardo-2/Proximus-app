@@ -12,12 +12,14 @@ const _resourceLabels = {
   'stocks': 'Existencias',
   'routes': 'Rutas',
   'customers': 'Clientes',
+  'route_activity': 'Ruta del día',
   'customer_credit': 'Crédito de clientes',
   'receivables': 'Deudas abiertas',
   'delivery_runs': 'Jornadas de reparto',
 };
 
 const _operationLabels = {
+  'customer.create': 'Cliente nuevo',
   'order.create': 'Pedido',
   'visit.no_sale': 'Visita sin pedido',
   'delivery.outcome': 'Resultado de entrega',
