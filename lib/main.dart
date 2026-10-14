@@ -1,0 +1,63 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+
+import 'app/providers.dart';
+import 'app/theme.dart';
+import 'data/database.dart';
+import 'features/home/home_screen.dart';
+import 'features/login/login_screen.dart';
+import 'features/sync/sync_screen.dart';
+
+void main() {
+  WidgetsFlutterBinding.ensureInitialized();
+  runApp(ProviderScope(
+    overrides: [databaseProvider.overrideWithValue(AppDatabase())],
+    child: const ProximusApp(),
+  ));
+}
+
+final _routerProvider = Provider<GoRouter>((ref) {
+  final refresh = ValueNotifier<int>(0);
+  ref.listen(sessionProvider, (_, _) => refresh.value++);
+  ref.onDispose(refresh.dispose);
+
+  return GoRouter(
+    refreshListenable: refresh,
+    initialLocation: '/',
+    redirect: (context, state) {
+      final signedIn = ref.read(sessionProvider).value != null;
+      final atLogin = state.matchedLocation == '/login';
+      if (!signedIn) return atLogin ? null : '/login';
+      return atLogin ? '/' : null;
+    },
+    routes: [
+      GoRoute(path: '/login', builder: (_, _) => const LoginScreen()),
+      GoRoute(path: '/', builder: (_, _) => const HomeScreen(), routes: [
+        GoRoute(path: 'sync', builder: (_, _) => const SyncScreen()),
+      ]),
+    ],
+  );
+});
+
+class ProximusApp extends ConsumerWidget {
+  const ProximusApp({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    if (ref.watch(sessionProvider).isLoading) {
+      return MaterialApp(theme: buildTheme(), home: const Scaffold(body: Center(child: CircularProgressIndicator())));
+    }
+
+    return MaterialApp.router(
+      title: 'Proximus',
+      theme: buildTheme(),
+      routerConfig: ref.watch(_routerProvider),
+      locale: const Locale('es', 'HN'),
+      supportedLocales: const [Locale('es', 'HN'), Locale('es')],
+      localizationsDelegates: GlobalMaterialLocalizations.delegates,
+      debugShowCheckedModeBanner: false,
+    );
+  }
+}
