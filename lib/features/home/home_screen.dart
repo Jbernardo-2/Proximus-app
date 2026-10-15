@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../app/modules.dart';
 import '../../app/providers.dart';
 import '../../app/theme.dart';
+import '../session/session_banner.dart';
 import '../sync/sync_screen.dart';
 import '../sync/sync_summary_card.dart';
 
@@ -38,12 +39,13 @@ class HomeScreen extends ConsumerWidget {
           ],
         ),
         actions: [
-          IconButton(tooltip: 'Cerrar sesión', icon: const Icon(Icons.logout), onPressed: () => _logout(context, ref)),
+          IconButton(tooltip: 'Ajustes', icon: const Icon(Icons.settings_outlined), onPressed: () => context.push('/settings')),
         ],
       ),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          const SessionBanner(),
           const ClockWarning(),
           SyncSummaryCard(onTap: () => context.go('/sync')),
           const SizedBox(height: 24),
@@ -66,39 +68,6 @@ class HomeScreen extends ConsumerWidget {
     );
   }
 
-  Future<void> _logout(BuildContext context, WidgetRef ref) async {
-    final counts = ref.read(outboxCountsProvider).value;
-    if ((counts?.pending ?? 0) > 0) {
-      final confirmed = await showDialog<bool>(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('Hay operaciones sin enviar'),
-          content: Text('${counts!.pending} operaciones siguen en el teléfono. Se intentará enviarlas ahora; si no hay señal se enviarán cuando vuelvas a iniciar sesión con tu usuario.'),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancelar')),
-            FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Cerrar sesión')),
-          ],
-        ),
-      );
-      if (confirmed != true || !context.mounted) return;
-    }
-    final navigator = Navigator.of(context, rootNavigator: true);
-    final notifier = ref.read(sessionProvider.notifier);
-    showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => const AlertDialog(
-        content: Row(children: [
-          SizedBox.square(dimension: 22, child: CircularProgressIndicator(strokeWidth: 2)),
-          SizedBox(width: 16),
-          Expanded(child: Text('Cerrando sesión…')),
-        ]),
-      ),
-    );
-    await notifier.prepareLogout();
-    navigator.pop();
-    await notifier.endSession();
-  }
 }
 
 class _ModuleTile extends StatelessWidget {

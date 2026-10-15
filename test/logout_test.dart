@@ -1,5 +1,5 @@
 import 'package:drift/native.dart';
-import 'package:flutter/widgets.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/date_symbol_data_local.dart';
@@ -53,7 +53,11 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Ana Preventista'), findsOneWidget);
 
-    await tester.tap(find.byTooltip('Cerrar sesión'));
+    await tester.tap(find.byTooltip('Ajustes'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Cambiar de usuario o cerrar sesión'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Cerrar sesión'));
     await tester.pumpAndSettle();
 
     expect(tester.takeException(), isNull);

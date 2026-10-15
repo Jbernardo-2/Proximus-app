@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:isolate';
 
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:drift/drift.dart';
@@ -9,6 +10,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/api.dart';
 import '../core/decimal_value.dart';
 import '../core/location_capture.dart';
+import '../core/offline_credential.dart';
 import '../core/session.dart';
 import '../data/database.dart';
 import '../features/preventa/data/customer_profile.dart';
@@ -31,7 +33,8 @@ final sessionProvider = AsyncNotifierProvider<SessionController, Session?>(Sessi
 
 final apiProvider = Provider<ProximusApi?>((ref) {
   final session = ref.watch(sessionProvider).value;
-  return session == null ? null : ProximusApi(baseUrl: session.serverUrl, token: session.token);
+  // No calls to the server while the session is not accepted there (opened offline or expired).
+  return session == null || !session.canSync ? null : ProximusApi(baseUrl: session.serverUrl, token: session.token);
 });
 
 final outboxProvider = Provider<OutboxService>((ref) => OutboxService(ref.watch(databaseProvider)));
@@ -56,7 +59,44 @@ class SessionController extends AsyncNotifier<Session?> {
   @override
   Future<Session?> build() => ref.read(secureStoreProvider).session();
 
+  /// Online login; without signal, the last user of this phone may enter with the
+  /// password checked against the fingerprint kept from the last online login.
   Future<void> login({required String email, required String password, required String serverUrl}) async {
+    try {
+      await _loginOnline(email: email, password: password, serverUrl: serverUrl);
+    } on ApiException catch (error) {
+      if (!error.isNetwork) rethrow;
+      await _loginOffline(email: email, password: password, networkError: error);
+    }
+  }
+
+  /// The server stopped accepting this session; the user goes on working on the phone.
+  Future<void> markNeedsReauth() async {
+    final session = state.value;
+    if (session == null || session.needsReauth) return;
+    final updated = session.copyWith(needsReauth: true);
+    await ref.read(secureStoreProvider).saveSession(updated).catchError((_) {});
+    state = AsyncData(updated);
+  }
+
+  /// Swaps a token older than a week for a new one, so a session in use never expires offline.
+  Future<void> renewIfDue() async {
+    final session = state.value;
+    if (session == null || !session.shouldRenew(DateTime.now())) return;
+    final response = await ProximusApi(baseUrl: session.serverUrl, token: session.token).refresh();
+    final renewed = session.copyWith(
+      token: response['token'] as String,
+      abilities: (response['abilities'] as List).cast<String>(),
+      user: (response['user'] as Map).cast<String, dynamic>(),
+      device: (response['device'] as Map?)?.cast<String, dynamic>(),
+      issuedAt: DateTime.now(),
+      expiresAt: DateTime.tryParse(response['expires_at'] as String? ?? ''),
+    );
+    await ref.read(secureStoreProvider).saveSession(renewed);
+    state = AsyncData(renewed);
+  }
+
+  Future<void> _loginOnline({required String email, required String password, required String serverUrl}) async {
     final store = ref.read(secureStoreProvider);
     final db = ref.read(databaseProvider);
     await _step('guardar el servidor', () => store.saveServerUrl(serverUrl));
@@ -77,9 +117,11 @@ class SessionController extends AsyncNotifier<Session?> {
     final session = await _step('leer la respuesta del servidor', () async => Session(
       serverUrl: serverUrl,
       token: response['token'] as String,
-      user: (response['user'] as Map).cast<String, dynamic>(),
+      user: {...(response['user'] as Map).cast<String, dynamic>(), 'email': email.trim().toLowerCase()},
       device: device,
       abilities: (response['abilities'] as List).cast<String>(),
+      issuedAt: DateTime.now(),
+      expiresAt: DateTime.tryParse(response['expires_at'] as String? ?? ''),
     ));
 
     final owner = await _step('leer el usuario anterior', store.dataOwner);
@@ -99,6 +141,36 @@ class SessionController extends AsyncNotifier<Session?> {
     await _step('guardar las series del teléfono en la base local', () => ref.read(outboxProvider).adoptServerSeries((device['series'] as Map).cast<String, dynamic>()));
     await _step('guardar el usuario', () => store.saveDataOwner(session.userId));
     await _step('guardar la sesión', () => store.saveSession(session));
+    // The password fingerprint for entering without signal next time. Not worth failing the login over.
+    try {
+      final offlineSession = session.copyWith(token: '').toJson();
+      final credential = await Isolate.run(() => OfflineCredential.create(email: email, password: password, session: offlineSession));
+      await store.saveOfflineCredential(credential);
+    } catch (_) {}
+    state = AsyncData(session);
+  }
+
+  Future<void> _loginOffline({required String email, required String password, required ApiException networkError}) async {
+    final store = ref.read(secureStoreProvider);
+    final credential = await store.offlineCredential();
+    if (credential == null || credential.email != email.trim().toLowerCase()) {
+      throw ApiException('Sin conexión con el servidor. Sin señal solo puede entrar el último usuario que trabajó en este teléfono.');
+    }
+    if (credential.locked) {
+      throw ApiException('Demasiados intentos sin conexión. Conéctate a internet para entrar.');
+    }
+
+    final matches = await Isolate.run(() => credential.matches(email, password));
+    if (!matches) {
+      final failed = credential.withFailedAttempt();
+      await store.saveOfflineCredential(failed);
+      final left = OfflineCredential.maxAttempts - failed.failedAttempts;
+      throw ApiException(left > 0 ? 'Contraseña incorrecta. Te quedan $left intentos sin conexión.' : 'Demasiados intentos sin conexión. Conéctate a internet para entrar.');
+    }
+
+    final session = Session.fromJson(credential.session).copyWith(needsReauth: true);
+    await store.saveOfflineCredential(OfflineCredential.fromJson({...credential.toJson(), 'failed_attempts': 0}));
+    await store.saveSession(session);
     state = AsyncData(session);
   }
 
@@ -113,12 +185,11 @@ class SessionController extends AsyncNotifier<Session?> {
     }
   }
 
-  /// Sends what is pending first. Local data stays for the same user's next login.
   /// First step of signing out: send what is pending and close the token on the server.
   /// Never keeps the user waiting; without signal the queue stays for the next login.
   Future<void> prepareLogout() async {
     final session = state.value;
-    if (session == null) return;
+    if (session == null || !session.canSync) return;
     // Built here from the current session: the shared api/engine providers depend on this
     // controller, so reading them from it would be a circular dependency.
     final api = ProximusApi(baseUrl: session.serverUrl, token: session.token);
@@ -140,18 +211,20 @@ class SessionController extends AsyncNotifier<Session?> {
   }
 
   /// Closes the session on the phone. It always ends, even if the keystore misbehaves.
-  Future<void> endSession() async {
+  /// [forgetCredential] also removes entering without signal (blocked phone).
+  Future<void> endSession({bool forgetCredential = false}) async {
+    final store = ref.read(secureStoreProvider);
     try {
       await cancelBackgroundSync().timeout(const Duration(seconds: 3));
     } catch (_) {}
     try {
-      await ref.read(secureStoreProvider).clearSession().timeout(const Duration(seconds: 5));
+      await store.clearSession().timeout(const Duration(seconds: 5));
+      if (forgetCredential) await store.clearOfflineCredential().timeout(const Duration(seconds: 5));
     } catch (_) {
       // The session is dropped from memory anyway; the next start reads a clean keystore.
     }
     state = const AsyncData(null);
   }
-
 }
 
 class SyncStatus {
@@ -239,12 +312,16 @@ class SyncController extends Notifier<SyncStatus> {
     try {
       final report = pushOnly ? await engine.pushOnly() : await engine.sync();
       state = SyncStatus(lastReport: report);
+      if (report.ok && !pushOnly) {
+        await ref.read(sessionProvider.notifier).renewIfDue().catchError((_) {});
+      }
     } on DeviceRevokedException catch (error) {
       state = SyncStatus(notice: error.message);
-      await ref.read(sessionProvider.notifier).endSession();
+      await ref.read(sessionProvider.notifier).endSession(forgetCredential: true);
     } on SessionExpiredException {
-      state = const SyncStatus(notice: 'Tu sesión expiró. Inicia sesión de nuevo; lo pendiente se conserva.');
-      await ref.read(sessionProvider.notifier).endSession();
+      // Not signed out: the user keeps working and enters the password to send what is pending.
+      state = const SyncStatus();
+      await ref.read(sessionProvider.notifier).markNeedsReauth();
     } catch (error) {
       // Any other failure ends the cycle visibly instead of leaving "Sincronizando…" forever.
       state = SyncStatus(

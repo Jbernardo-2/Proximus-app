@@ -14,6 +14,7 @@ import 'features/preventa/presentation/daily_route_screen.dart';
 import 'features/preventa/presentation/order_screen.dart';
 import 'features/preventa/presentation/payment_screen.dart';
 import 'features/login/login_screen.dart';
+import 'features/session/settings_screen.dart';
 import 'features/sync/sync_screen.dart';
 
 Future<void> main() async {
@@ -43,6 +44,7 @@ final _routerProvider = Provider<GoRouter>((ref) {
       GoRoute(path: '/login', builder: (_, _) => const LoginScreen()),
       GoRoute(path: '/', builder: (_, _) => const HomeScreen(), routes: [
         GoRoute(path: 'sync', builder: (_, _) => const SyncScreen()),
+        GoRoute(path: 'settings', builder: (_, _) => const SettingsScreen()),
         GoRoute(path: 'route', builder: (_, _) => const DailyRouteScreen()),
         GoRoute(path: 'customers', builder: (_, _) => const CustomersScreen()),
         GoRoute(path: 'payment/:id', builder: (_, state) => PaymentScreen(customerId: state.pathParameters['id']!)),

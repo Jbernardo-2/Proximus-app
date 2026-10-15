@@ -62,6 +62,9 @@ class ProximusApi implements SyncApi {
 
   Future<void> logout() => _send(() => _dio.delete('/tokens/current'));
 
+  /// A new token for this phone with a fresh expiry.
+  Future<Map<String, dynamic>> refresh() => _send(() => _dio.post('/tokens/refresh'));
+
   @override
   Future<Map<String, dynamic>> manifest() => _send(() => _dio.get('/sync'));
 
