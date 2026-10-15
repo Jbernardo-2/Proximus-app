@@ -8,6 +8,8 @@ import 'app/providers.dart';
 import 'app/theme.dart';
 import 'data/database.dart';
 import 'features/home/home_screen.dart';
+import 'features/preventa/presentation/customer_screen.dart';
+import 'features/preventa/presentation/customers_screen.dart';
 import 'features/preventa/presentation/daily_route_screen.dart';
 import 'features/login/login_screen.dart';
 import 'features/sync/sync_screen.dart';
@@ -40,6 +42,8 @@ final _routerProvider = Provider<GoRouter>((ref) {
       GoRoute(path: '/', builder: (_, _) => const HomeScreen(), routes: [
         GoRoute(path: 'sync', builder: (_, _) => const SyncScreen()),
         GoRoute(path: 'route', builder: (_, _) => const DailyRouteScreen()),
+        GoRoute(path: 'customers', builder: (_, _) => const CustomersScreen()),
+        GoRoute(path: 'customer/:id', builder: (_, state) => CustomerScreen(customerId: state.pathParameters['id']!)),
       ]),
     ],
   );

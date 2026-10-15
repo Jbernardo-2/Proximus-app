@@ -38,14 +38,16 @@ class DailyRouteScreen extends ConsumerWidget {
           if (route.stops.isEmpty) {
             return RefreshIndicator(
               onRefresh: () => ref.read(syncProvider.notifier).sync(),
-              child: ListView(children: const [
-                SizedBox(height: 120),
-                _Message(
-                  icon: Icons.event_available_outlined,
-                  title: 'No tienes clientes programados hoy',
-                  detail: 'Desliza hacia abajo para sincronizar si el supervisor acaba de cambiar la ruta.',
-                ),
-              ]),
+              child: ListView(
+                children: const [
+                  SizedBox(height: 120),
+                  _Message(
+                    icon: Icons.event_available_outlined,
+                    title: 'No tienes clientes programados hoy',
+                    detail: 'Desliza hacia abajo para sincronizar si el supervisor acaba de cambiar la ruta.',
+                  ),
+                ],
+              ),
             );
           }
           return RefreshIndicator(
@@ -89,23 +91,34 @@ class _Summary extends ConsumerWidget {
               style: const TextStyle(color: AppColors.muted),
             ),
             const SizedBox(height: 14),
-            Row(children: [
-              Expanded(child: ClipRRect(borderRadius: BorderRadius.circular(8), child: LinearProgressIndicator(value: route.progress, minHeight: 8))),
-              const SizedBox(width: 12),
-              Text('$percent %', style: const TextStyle(fontWeight: FontWeight.w700)),
-            ]),
+            Row(
+              children: [
+                Expanded(
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: LinearProgressIndicator(value: route.progress, minHeight: 8),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Text('$percent %', style: const TextStyle(fontWeight: FontWeight.w700)),
+              ],
+            ),
             const SizedBox(height: 14),
-            Row(children: [
-              _Figure(label: 'Pendientes', value: '${route.pending}'),
-              _Figure(label: 'Atendidos', value: '${route.attended}'),
-              _Figure(label: 'Pedidos', value: '${route.withOrder}', color: AppColors.brand),
-              _Figure(label: 'Sin venta', value: '${route.withNoSale}', color: AppColors.amber),
-            ]),
+            Row(
+              children: [
+                _Figure(label: 'Pendientes', value: '${route.pending}'),
+                _Figure(label: 'Atendidos', value: '${route.attended}'),
+                _Figure(label: 'Pedidos', value: '${route.withOrder}', color: AppColors.brand),
+                _Figure(label: 'Sin venta', value: '${route.withNoSale}', color: AppColors.amber),
+              ],
+            ),
             const Divider(height: 28),
-            Row(children: [
-              _Figure(label: 'Vendido', value: money(route.sold)),
-              _Figure(label: 'Abonos', value: money(route.collected)),
-            ]),
+            Row(
+              children: [
+                _Figure(label: 'Vendido', value: money(route.sold)),
+                _Figure(label: 'Abonos', value: money(route.collected)),
+              ],
+            ),
             if ((pending?.pending ?? 0) > 0 || (pending?.rejected ?? 0) > 0) ...[
               const SizedBox(height: 12),
               InkWell(
@@ -135,11 +148,17 @@ class _Figure extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Expanded(
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(value, style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: color ?? AppColors.ink)),
-          Text(label, style: const TextStyle(fontSize: 12, color: AppColors.muted)),
-        ]),
-      );
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          value,
+          style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: color ?? AppColors.ink),
+        ),
+        Text(label, style: const TextStyle(fontSize: 12, color: AppColors.muted)),
+      ],
+    ),
+  );
 }
 
 class _StopCard extends ConsumerWidget {
@@ -162,107 +181,150 @@ class _StopCard extends ConsumerWidget {
 
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(14, 14, 14, 8),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              CircleAvatar(
-                radius: 16,
-                backgroundColor: stop.isCompleted ? color.withValues(alpha: 0.15) : const Color(0xFFF1F1EF),
-                child: Text('${stop.visitOrder}', style: TextStyle(fontWeight: FontWeight.w700, color: stop.isCompleted ? color : AppColors.ink)),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text(customer.businessName, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
-                  Text(customer.address, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: AppColors.muted)),
-                ]),
-              ),
-            ]),
-            const SizedBox(height: 10),
-            Wrap(spacing: 8, runSpacing: 6, crossAxisAlignment: WrapCrossAlignment.center, children: [
-              _Chip(text: label, color: color),
-              if (stop.activity.hasPayment) const _Chip(text: 'Abonó', color: Color(0xFF2F6FD0)),
-              if (stop.operationState == LocalOperationState.pending) const _Chip(text: 'Por enviar', color: AppColors.amber, outlined: true),
-              if (stop.operationState == LocalOperationState.rejected) const _Chip(text: 'Rechazado', color: AppColors.danger, outlined: true),
-            ]),
-            if (balance != null) ...[
-              const SizedBox(height: 10),
-              Row(children: [
-                Expanded(
-                  child: Text.rich(TextSpan(children: [
-                    const TextSpan(text: 'Saldo ', style: TextStyle(color: AppColors.muted)),
-                    TextSpan(
-                      text: money(balance.outstanding),
-                      style: TextStyle(fontWeight: FontWeight.w700, color: balance.overdue.isZero ? AppColors.ink : AppColors.danger),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: () => context.go('/customer/${customer.id}'),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(14, 14, 14, 8),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  CircleAvatar(
+                    radius: 16,
+                    backgroundColor: stop.isCompleted ? color.withValues(alpha: 0.15) : const Color(0xFFF1F1EF),
+                    child: Text(
+                      '${stop.visitOrder}',
+                      style: TextStyle(fontWeight: FontWeight.w700, color: stop.isCompleted ? color : AppColors.ink),
                     ),
-                  ])),
-                ),
-                Expanded(
-                  child: Text.rich(TextSpan(children: [
-                    const TextSpan(text: 'Disponible ', style: TextStyle(color: AppColors.muted)),
-                    TextSpan(
-                      text: balance.allowsCredit ? money(balance.available.isNegative ? DecimalValue.zero : balance.available) : 'Sin crédito',
-                      style: const TextStyle(fontWeight: FontWeight.w700),
-                    ),
-                  ])),
-                ),
-              ]),
-            ],
-            if (stop.rejectionMessage != null) ...[
-              const SizedBox(height: 8),
-              Text(stop.rejectionMessage!, style: const TextStyle(color: AppColors.danger, fontSize: 13)),
-            ],
-            const SizedBox(height: 6),
-            Row(children: [
-              if (phone != null)
-                IconButton(tooltip: 'Llamar', icon: const Icon(Icons.call_outlined), onPressed: () => _open(context, ExternalApps.call(phone))),
-              if (whatsapp != null)
-                IconButton(tooltip: 'WhatsApp', icon: const Icon(Icons.chat_outlined), onPressed: () => _open(context, ExternalApps.whatsapp(whatsapp))),
-              IconButton(
-                tooltip: 'Abrir ubicación',
-                icon: const Icon(Icons.place_outlined),
-                onPressed: () => _open(
-                  context,
-                  ExternalApps.map(
-                    latitude: customer.latitude,
-                    longitude: customer.longitude,
-                    label: customer.hasLocation ? customer.businessName : '${customer.address} ${customer.businessName}',
                   ),
-                ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(customer.businessName, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
+                        Text(
+                          customer.address,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(color: AppColors.muted),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
-            ]),
-            const SizedBox(height: 4),
-            Row(children: [
-              Expanded(
-                child: OutlinedButton(
-                  style: OutlinedButton.styleFrom(minimumSize: const Size(0, 44)),
-                  onPressed: () => _act(context, ref, 'no_sale'),
-                  child: const Text('Sin venta'),
-                ),
+              const SizedBox(height: 10),
+              Wrap(
+                spacing: 8,
+                runSpacing: 6,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  _Chip(text: label, color: color),
+                  if (stop.activity.hasPayment) const _Chip(text: 'Abonó', color: Color(0xFF2F6FD0)),
+                  if (stop.operationState == LocalOperationState.pending) const _Chip(text: 'Por enviar', color: AppColors.amber, outlined: true),
+                  if (stop.operationState == LocalOperationState.rejected) const _Chip(text: 'Rechazado', color: AppColors.danger, outlined: true),
+                ],
               ),
-              const SizedBox(width: 8),
-              const Expanded(
-                child: OutlinedButton(
-                  style: ButtonStyle(minimumSize: WidgetStatePropertyAll(Size(0, 44))),
-                  onPressed: null,
-                  child: Text('Abono'),
+              if (balance != null) ...[
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text.rich(
+                        TextSpan(
+                          children: [
+                            const TextSpan(
+                              text: 'Saldo ',
+                              style: TextStyle(color: AppColors.muted),
+                            ),
+                            TextSpan(
+                              text: money(balance.outstanding),
+                              style: TextStyle(fontWeight: FontWeight.w700, color: balance.overdue.isZero ? AppColors.ink : AppColors.danger),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    Expanded(
+                      child: Text.rich(
+                        TextSpan(
+                          children: [
+                            const TextSpan(
+                              text: 'Disponible ',
+                              style: TextStyle(color: AppColors.muted),
+                            ),
+                            TextSpan(
+                              text: balance.allowsCredit ? money(balance.available.isNegative ? DecimalValue.zero : balance.available) : 'Sin crédito',
+                              style: const TextStyle(fontWeight: FontWeight.w700),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
+              ],
+              if (stop.rejectionMessage != null) ...[
+                const SizedBox(height: 8),
+                Text(stop.rejectionMessage!, style: const TextStyle(color: AppColors.danger, fontSize: 13)),
+              ],
+              const SizedBox(height: 6),
+              Row(
+                children: [
+                  if (phone != null)
+                    IconButton(tooltip: 'Llamar', icon: const Icon(Icons.call_outlined), onPressed: () => _open(context, ExternalApps.call(phone))),
+                  if (whatsapp != null)
+                    IconButton(tooltip: 'WhatsApp', icon: const Icon(Icons.chat_outlined), onPressed: () => _open(context, ExternalApps.whatsapp(whatsapp))),
+                  IconButton(
+                    tooltip: 'Abrir ubicación',
+                    icon: const Icon(Icons.place_outlined),
+                    onPressed: () => _open(
+                      context,
+                      ExternalApps.map(
+                        latitude: customer.latitude,
+                        longitude: customer.longitude,
+                        label: customer.hasLocation ? customer.businessName : '${customer.address} ${customer.businessName}',
+                      ),
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(width: 8),
-              Expanded(
-                flex: 2,
-                child: FilledButton.icon(
-                  style: FilledButton.styleFrom(minimumSize: const Size(0, 44)),
-                  onPressed: null,
-                  icon: const Icon(Icons.add_shopping_cart, size: 18),
-                  label: const Text('Pedido'),
-                ),
+              const SizedBox(height: 4),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      style: OutlinedButton.styleFrom(minimumSize: const Size(0, 44)),
+                      onPressed: () => _act(context, ref, 'no_sale'),
+                      child: const Text('Sin venta'),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  const Expanded(
+                    child: OutlinedButton(
+                      style: ButtonStyle(minimumSize: WidgetStatePropertyAll(Size(0, 44))),
+                      onPressed: null,
+                      child: Text('Abono'),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    flex: 2,
+                    child: FilledButton.icon(
+                      style: FilledButton.styleFrom(minimumSize: const Size(0, 44)),
+                      onPressed: null,
+                      icon: const Icon(Icons.add_shopping_cart, size: 18),
+                      label: const Text('Pedido'),
+                    ),
+                  ),
+                ],
               ),
-            ]),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -270,7 +332,7 @@ class _StopCard extends ConsumerWidget {
 
   Future<void> _act(BuildContext context, WidgetRef ref, String action) async {
     if (action == 'no_sale') {
-      final saved = await showNoSaleSheet(context, stop);
+      final saved = await showNoSaleSheet(context, stop.customer, routeStopId: stop.routeStopId);
       if (saved == true && context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Visita sin venta guardada en el teléfono: ${stop.customer.businessName}.')));
       }
@@ -293,14 +355,17 @@ class _Chip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
-        decoration: BoxDecoration(
-          color: outlined ? Colors.transparent : color.withValues(alpha: 0.12),
-          borderRadius: BorderRadius.circular(20),
-          border: outlined ? Border.all(color: color.withValues(alpha: 0.6)) : null,
-        ),
-        child: Text(text, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: color)),
-      );
+    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+    decoration: BoxDecoration(
+      color: outlined ? Colors.transparent : color.withValues(alpha: 0.12),
+      borderRadius: BorderRadius.circular(20),
+      border: outlined ? Border.all(color: color.withValues(alpha: 0.6)) : null,
+    ),
+    child: Text(
+      text,
+      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: color),
+    ),
+  );
 }
 
 class _StaleBanner extends StatelessWidget {
@@ -308,13 +373,17 @@ class _StaleBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(color: const Color(0xFFFFF7E6), borderRadius: BorderRadius.circular(12), border: Border.all(color: const Color(0xFFF5D08A))),
-        child: const Text(
-          'Esta ruta es de otro día. Sincroniza con señal para recibir la de hoy; lo que registres se guarda igual.',
-          style: TextStyle(color: Color(0xFF8A5A00)),
-        ),
-      );
+    padding: const EdgeInsets.all(12),
+    decoration: BoxDecoration(
+      color: const Color(0xFFFFF7E6),
+      borderRadius: BorderRadius.circular(12),
+      border: Border.all(color: const Color(0xFFF5D08A)),
+    ),
+    child: const Text(
+      'Esta ruta es de otro día. Sincroniza con señal para recibir la de hoy; lo que registres se guarda igual.',
+      style: TextStyle(color: Color(0xFF8A5A00)),
+    ),
+  );
 }
 
 class _Message extends StatelessWidget {
@@ -326,13 +395,20 @@ class _Message extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          Icon(icon, size: 48, color: AppColors.muted),
-          const SizedBox(height: 12),
-          Text(title, textAlign: TextAlign.center, style: Theme.of(context).textTheme.titleMedium),
-          const SizedBox(height: 6),
-          Text(detail, textAlign: TextAlign.center, style: const TextStyle(color: AppColors.muted)),
-        ]),
-      );
+    padding: const EdgeInsets.all(32),
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 48, color: AppColors.muted),
+        const SizedBox(height: 12),
+        Text(title, textAlign: TextAlign.center, style: Theme.of(context).textTheme.titleMedium),
+        const SizedBox(height: 6),
+        Text(
+          detail,
+          textAlign: TextAlign.center,
+          style: const TextStyle(color: AppColors.muted),
+        ),
+      ],
+    ),
+  );
 }

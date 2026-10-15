@@ -25,7 +25,7 @@ const appModules = [
     path: '/route',
     isAvailable: _routeActivity,
   ),
-  AppModule(label: 'Clientes', icon: Icons.storefront_outlined, isAvailable: _customers),
+  AppModule(label: 'Clientes', icon: Icons.storefront_outlined, path: '/customers', isAvailable: _customers),
   AppModule(label: 'Mi jornada', icon: Icons.local_shipping_outlined, isAvailable: _deliveries),
   AppModule(label: 'Inventario', icon: Icons.warehouse_outlined, isAvailable: _inventory),
   AppModule(label: 'Crédito', icon: Icons.account_balance_wallet_outlined, isAvailable: _credit),

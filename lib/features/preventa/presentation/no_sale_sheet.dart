@@ -8,17 +8,18 @@ import '../application/preventa_actions.dart';
 import '../data/preventa_models.dart';
 
 /// Asks why there was no sale and saves the visit on the phone. True when saved.
-Future<bool?> showNoSaleSheet(BuildContext context, LocalRouteActivity stop) => showModalBottomSheet<bool>(
+Future<bool?> showNoSaleSheet(BuildContext context, LocalCustomer customer, {String? routeStopId}) => showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
-      builder: (_) => _NoSaleSheet(stop: stop),
+      builder: (_) => _NoSaleSheet(customer: customer, routeStopId: routeStopId),
     );
 
 class _NoSaleSheet extends ConsumerStatefulWidget {
-  const _NoSaleSheet({required this.stop});
+  const _NoSaleSheet({required this.customer, this.routeStopId});
 
-  final LocalRouteActivity stop;
+  final LocalCustomer customer;
+  final String? routeStopId;
 
   @override
   ConsumerState<_NoSaleSheet> createState() => _NoSaleSheetState();
@@ -40,7 +41,8 @@ class _NoSaleSheetState extends ConsumerState<_NoSaleSheet> {
     setState(() => _saving = true);
     try {
       await ref.read(preventaActionsProvider).recordNoSale(
-            stop: widget.stop,
+            customer: widget.customer,
+            routeStopId: widget.routeStopId,
             reason: _reason!,
             notes: _notes.text.trim().isEmpty ? null : _notes.text.trim(),
             location: _location,
@@ -65,7 +67,7 @@ class _NoSaleSheetState extends ConsumerState<_NoSaleSheet> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Text('Sin venta', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700)),
-          Text(widget.stop.customer.businessName, style: const TextStyle(color: AppColors.muted)),
+          Text(widget.customer.businessName, style: const TextStyle(color: AppColors.muted)),
           const SizedBox(height: 12),
           RadioGroup<String>(
             groupValue: _reason,

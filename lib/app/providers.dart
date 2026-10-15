@@ -9,6 +9,8 @@ import '../core/api.dart';
 import '../core/location_capture.dart';
 import '../core/session.dart';
 import '../data/database.dart';
+import '../features/preventa/data/customer_profile.dart';
+import '../features/preventa/data/preventa_models.dart';
 import '../features/preventa/data/preventista_repository.dart';
 import '../sync/outbox_service.dart';
 import '../sync/sync_engine.dart';
@@ -293,3 +295,39 @@ final customerBalancesProvider = Provider<Map<String, CustomerBalance>>((ref) {
 });
 
 final locationServiceProvider = Provider<LocationCaptureService>((ref) => LocationCaptureService());
+
+/// Local data the customer screens read, refreshed as the database changes.
+final customerSourcesProvider = Provider<CustomerSources>((ref) {
+  List<Map<String, dynamic>> records(String resource) => ref.watch(localRecordsProvider(resource)).value ?? const [];
+  DateTime? pulled(String resource) {
+    final value = ref.watch(syncStateProvider('pulled_at:$resource')).value;
+    return value == null ? null : DateTime.tryParse(value);
+  }
+
+  return CustomerSources(
+    customers: records('customers'),
+    credits: records('customer_credit'),
+    receivables: records('receivables'),
+    orders: records('recent_orders'),
+    outbox: ref.watch(outboxRowsProvider).value ?? const [],
+    pulledAt: {for (final resource in const ['customer_credit', 'receivables', 'recent_orders']) resource: pulled(resource)},
+    route: ref.watch(dailyRouteProvider).value,
+  );
+});
+
+final customerListProvider = Provider<List<LocalCustomer>>(
+  (ref) => ref.read(preventistaRepositoryProvider).customers(ref.watch(customerSourcesProvider)),
+);
+
+final customerProfileProvider = Provider.family<CustomerProfile?, String>(
+  (ref, customerId) => ref.read(preventistaRepositoryProvider).customerProfile(customerId, ref.watch(customerSourcesProvider)),
+);
+
+/// Account history needs signal: it is read from the server when the profile opens.
+final accountEntriesProvider = FutureProvider.autoDispose.family<List<AccountEntry>, String>((ref, customerId) async {
+  final api = ref.watch(apiProvider);
+  if (api == null) return const [];
+  final response = await api.get('/customers/$customerId/credit');
+  final entries = ((response['data'] as Map?)?['recent_entries'] as List?) ?? const [];
+  return [for (final entry in entries) AccountEntry.fromJson((entry as Map).cast<String, dynamic>())];
+});

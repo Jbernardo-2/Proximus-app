@@ -404,3 +404,80 @@ final class LocalReceivable {
   final DateTime? issuedAt;
   final DateTime? dueDate;
 }
+
+/// An order of the customer: downloaded from the server or still on the phone.
+final class LocalOrderSummary {
+  const LocalOrderSummary({
+    required this.customerId,
+    required this.orderDate,
+    required this.status,
+    required this.statusLabel,
+    required this.paymentTerm,
+    required this.total,
+    required this.itemsCount,
+    required this.state,
+    this.id,
+    this.orderNumber,
+    this.clientReference,
+    this.rejectionMessage,
+  });
+
+  factory LocalOrderSummary.fromJson(Map<String, dynamic> json) => LocalOrderSummary(
+        id: json['id']?.toString(),
+        customerId: json['customer_id'].toString(),
+        orderNumber: _text(json['order_number']),
+        clientReference: _text(json['client_reference']),
+        orderDate: _date(json['order_date']) ?? DateTime(1970),
+        status: json['status'] as String? ?? '',
+        statusLabel: json['status_label'] as String? ?? '',
+        paymentTerm: json['payment_term'] as String? ?? 'cash',
+        total: _decimal(json['total']),
+        itemsCount: (json['items_count'] as num?)?.toInt() ?? 0,
+        state: LocalOperationState.synchronized,
+      );
+
+  final String? id;
+  final String customerId;
+
+  /// Number given by the server; null while the order only exists on the phone.
+  final String? orderNumber;
+  final String? clientReference;
+  final DateTime orderDate;
+  final String status;
+  final String statusLabel;
+  final String paymentTerm;
+  final DecimalValue total;
+  final int itemsCount;
+  final LocalOperationState state;
+  final String? rejectionMessage;
+
+  /// What to call it before the server numbers it.
+  String get reference {
+    if (orderNumber != null) return orderNumber!;
+    final tail = (clientReference ?? '').split(':').last;
+    return 'Temporal ${(tail.length > 8 ? tail.substring(0, 8) : tail).toUpperCase()}';
+  }
+}
+
+/// One line of the customer's account history (online only).
+final class AccountEntry {
+  const AccountEntry({required this.type, required this.typeLabel, required this.debit, required this.credit, this.receiptNumber, this.occurredAt, this.reversed = false});
+
+  factory AccountEntry.fromJson(Map<String, dynamic> json) => AccountEntry(
+        type: json['type'] as String? ?? '',
+        typeLabel: json['type_label'] as String? ?? '',
+        receiptNumber: _text(json['receipt_number']),
+        debit: _decimal(json['debit_amount']),
+        credit: _decimal(json['credit_amount']),
+        occurredAt: _date(json['occurred_at']),
+        reversed: json['reversed_at'] != null,
+      );
+
+  final String type;
+  final String typeLabel;
+  final String? receiptNumber;
+  final DecimalValue debit;
+  final DecimalValue credit;
+  final DateTime? occurredAt;
+  final bool reversed;
+}

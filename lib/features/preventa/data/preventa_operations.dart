@@ -42,12 +42,13 @@ abstract final class PreventaOperations {
 
   static Map<String, dynamic> noSale({
     required String customerId,
+    String? routeStopId,
     required String reason,
     required DateTime at,
     required LocationCapture location,
     String? notes,
   }) =>
-      {'customer_id': customerId, 'reason': reason, 'notes': notes, 'location': location.toPayload(at)};
+      {'customer_id': customerId, 'route_stop_id': ?routeStopId, 'reason': reason, 'notes': notes, 'location': location.toPayload(at)};
 
   static Map<String, dynamic> accountPayment({
     required String customerId,

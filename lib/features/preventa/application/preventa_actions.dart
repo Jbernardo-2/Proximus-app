@@ -12,7 +12,8 @@ class PreventaActions {
   final Ref _ref;
 
   Future<void> recordNoSale({
-    required LocalRouteActivity stop,
+    required LocalCustomer customer,
+    String? routeStopId,
     required String reason,
     required LocationSession location,
     String? notes,
@@ -24,9 +25,10 @@ class PreventaActions {
     await _ref.read(outboxProvider).enqueue(
           deviceCode: session.deviceCode,
           type: 'visit.no_sale',
-          summary: stop.customer.businessName,
+          summary: customer.businessName,
           build: (_) async => PreventaOperations.noSale(
-            customerId: stop.customer.id,
+            customerId: customer.id,
+            routeStopId: routeStopId,
             reason: reason,
             notes: notes,
             at: at,
