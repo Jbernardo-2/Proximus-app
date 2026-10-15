@@ -548,15 +548,19 @@ class ProductImagesController extends Notifier<Map<String, String>> {
     try {
       final files = await (await _store()).index();
       state = {...files, ...state};
-    } catch (_) {
+    } catch (error) {
       // Without thumbnails the screens show an icon; nothing else depends on them.
+      debugPrint('Proximus: no se leyeron las miniaturas: $error');
     }
   }
 
   /// Downloads new photos and removes old ones. Never blocks or fails the sync.
   Future<void> update() async {
     final api = ref.read(apiProvider);
-    if (api == null || _updating) return;
+    if (api == null || _updating) {
+      debugPrint('Proximus: miniaturas omitidas (api: ${api != null}, ocupado: $_updating)');
+      return;
+    }
     _updating = true;
     try {
       final store = await _store();
@@ -576,8 +580,9 @@ class ProductImagesController extends Notifier<Map<String, String>> {
         onSaved: (productId, path) => state = {...state, productId: path},
       );
       state = await store.index();
-    } catch (_) {
+    } catch (error, stack) {
       // Retried on the next sync.
+      debugPrint('Proximus: no se actualizaron las miniaturas: $error\n$stack');
     } finally {
       _updating = false;
     }
