@@ -11,6 +11,7 @@ import '../../../core/formatting.dart';
 import '../data/preventa_models.dart';
 import '../data/preventista_repository.dart';
 import 'no_sale_sheet.dart';
+import 'visit_actions.dart';
 
 class DailyRouteScreen extends ConsumerWidget {
   const DailyRouteScreen({super.key});
@@ -294,35 +295,7 @@ class _StopCard extends ConsumerWidget {
                 ],
               ),
               const SizedBox(height: 4),
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton(
-                      style: OutlinedButton.styleFrom(minimumSize: const Size(0, 44)),
-                      onPressed: () => _act(context, ref, 'no_sale'),
-                      child: const Text('Sin venta'),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  const Expanded(
-                    child: OutlinedButton(
-                      style: ButtonStyle(minimumSize: WidgetStatePropertyAll(Size(0, 44))),
-                      onPressed: null,
-                      child: Text('Abono'),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    flex: 2,
-                    child: FilledButton.icon(
-                      style: FilledButton.styleFrom(minimumSize: const Size(0, 44)),
-                      onPressed: null,
-                      icon: const Icon(Icons.add_shopping_cart, size: 18),
-                      label: const Text('Pedido'),
-                    ),
-                  ),
-                ],
-              ),
+              VisitActions(onNoSale: () => _act(context, ref, 'no_sale')),
             ],
           ),
         ),

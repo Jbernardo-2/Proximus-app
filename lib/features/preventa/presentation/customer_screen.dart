@@ -10,6 +10,7 @@ import '../../../core/formatting.dart';
 import '../data/customer_profile.dart';
 import '../data/preventa_models.dart';
 import 'no_sale_sheet.dart';
+import 'visit_actions.dart';
 
 final _date = DateFormat('dd/MM/yyyy');
 
@@ -125,34 +126,14 @@ class _Actions extends StatelessWidget {
         ),
       ]),
       const SizedBox(height: 8),
-      Row(children: [
-        Expanded(
-          child: OutlinedButton(
-            style: OutlinedButton.styleFrom(minimumSize: const Size(0, 44)),
-            onPressed: () async {
-              final saved = await showNoSaleSheet(context, customer, routeStopId: profile.todayStop?.routeStopId);
-              if (saved == true && context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Visita sin venta guardada en el teléfono.')));
-              }
-            },
-            child: const Text('Sin venta'),
-          ),
-        ),
-        const SizedBox(width: 8),
-        const Expanded(
-          child: OutlinedButton(style: ButtonStyle(minimumSize: WidgetStatePropertyAll(Size(0, 44))), onPressed: null, child: Text('Abono')),
-        ),
-        const SizedBox(width: 8),
-        Expanded(
-          flex: 2,
-          child: FilledButton.icon(
-            style: FilledButton.styleFrom(minimumSize: const Size(0, 44)),
-            onPressed: null,
-            icon: const Icon(Icons.add_shopping_cart, size: 18),
-            label: const Text('Pedido'),
-          ),
-        ),
-      ]),
+      VisitActions(
+        onNoSale: () async {
+          final saved = await showNoSaleSheet(context, customer, routeStopId: profile.todayStop?.routeStopId);
+          if (saved == true && context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Visita sin venta guardada en el teléfono.')));
+          }
+        },
+      ),
     ]);
   }
 }
@@ -323,7 +304,10 @@ class _Section extends StatelessWidget {
             if (trailing != null) Text(trailing!, style: const TextStyle(fontWeight: FontWeight.w600, color: AppColors.muted)),
           ]),
           const SizedBox(height: 8),
-          Card(child: Padding(padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6), child: child)),
+          SizedBox(
+            width: double.infinity,
+            child: Card(child: Padding(padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6), child: child)),
+          ),
         ]),
       );
 }
