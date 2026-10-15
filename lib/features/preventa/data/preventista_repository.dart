@@ -15,6 +15,9 @@ final class DailyRoute {
   final String? date;
   final String today;
 
+  /// Routes of the day in the order their stops are listed.
+  List<String> get routeNames => stops.map((stop) => stop.routeName).toSet().toList();
+
   /// The route on the phone is from another day (e.g. synced yesterday, no signal today).
   bool get isStale => date != null && date != today;
 
@@ -84,7 +87,12 @@ final class PreventistaRepository {
       );
     }
 
-    final ordered = stops.values.toList()..sort((a, b) => a.visitOrder.compareTo(b.visitOrder));
+    // A preventista with two routes the same day sees one route after the other.
+    final ordered = stops.values.toList()
+      ..sort((a, b) {
+        final byRoute = a.routeName.compareTo(b.routeName);
+        return byRoute != 0 ? byRoute : a.visitOrder.compareTo(b.visitOrder);
+      });
     return DailyRoute(stops: ordered, date: routeDate, today: today);
   }
 
@@ -98,13 +106,15 @@ final class PreventistaRepository {
   LocalRouteActivity? _newCustomerStop(Map<String, dynamic> payload, Iterable<LocalRouteActivity> stops, String date, DateTime now) {
     final stop = (payload['route_stop'] as Map?)?.cast<String, dynamic>();
     if (stop == null || stop['id'] == null || (stop['visit_day'] as num?)?.toInt() != now.weekday) return null;
-    final lastOrder = stops.fold<int>(0, (last, item) => item.visitOrder > last ? item.visitOrder : last);
+    final routeId = stop['sales_route_id']?.toString() ?? stops.firstOrNull?.routeId ?? '';
+    final sameRoute = stops.where((item) => item.routeId == routeId);
+    final lastOrder = sameRoute.fold<int>(0, (last, item) => item.visitOrder > last ? item.visitOrder : last);
     return LocalRouteActivity(
       id: stop['id'].toString(),
       date: date,
       routeStopId: stop['id'].toString(),
-      routeId: stop['sales_route_id']?.toString() ?? stops.firstOrNull?.routeId ?? '',
-      routeName: stops.firstOrNull?.routeName ?? '',
+      routeId: routeId,
+      routeName: sameRoute.firstOrNull?.routeName ?? stops.firstOrNull?.routeName ?? '',
       visitOrder: (stop['visit_order'] as num?)?.toInt() ?? lastOrder + 1,
       customer: LocalCustomer.fromJson(payload),
       activity: StopActivity(),

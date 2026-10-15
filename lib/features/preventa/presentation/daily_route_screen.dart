@@ -59,7 +59,14 @@ class DailyRouteScreen extends ConsumerWidget {
                 if (route.isStale) ...[const _StaleBanner(), const SizedBox(height: 12)],
                 _Summary(route: route),
                 const SizedBox(height: 16),
-                for (final stop in route.stops) _StopCard(stop: stop),
+                for (final (index, stop) in route.stops.indexed) ...[
+                  if (route.routeNames.length > 1 && (index == 0 || route.stops[index - 1].routeName != stop.routeName))
+                    Padding(
+                      padding: EdgeInsets.only(top: index == 0 ? 0 : 8, bottom: 8),
+                      child: Text(stop.routeName, style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800, color: AppColors.muted)),
+                    ),
+                  _StopCard(stop: stop),
+                ],
               ],
             ),
           );
@@ -86,7 +93,7 @@ class _Summary extends ConsumerWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(route.stops.first.routeName, style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
+            Text(route.routeNames.join(' · '), style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
             Text(
               '${toBeginningOfSentenceCase(DateFormat("EEEE d 'de' MMMM", 'es').format(day))} · ${route.stops.length} clientes',
               style: const TextStyle(color: AppColors.muted),

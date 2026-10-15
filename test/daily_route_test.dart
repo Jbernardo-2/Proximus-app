@@ -77,6 +77,28 @@ void main() {
     expect(balances['c1']!.available.toFixed(2), '620.00', reason: '700 + 120 paid - 200 on credit');
   });
 
+  test('two routes on the same day are listed one after the other, not mixed', () {
+    Map<String, dynamic> onRoute(int order, String id, String name) => {...stopJson(order), 'id': '$id-$order', 'route_stop_id': '$id-$order', 'route': {'id': id, 'name': name}};
+    final route = const PreventistaRepository().mergeRouteActivity(
+      records: [onRoute(1, 'r2', 'Ruta Norte'), onRoute(2, 'r1', 'Ruta Centro'), onRoute(1, 'r1', 'Ruta Centro'), onRoute(2, 'r2', 'Ruta Norte')],
+      outbox: [
+        queued(1, 'customer.create', {
+          'id': 'nuevo',
+          'business_name': 'Pulpería Nueva',
+          'address': 'Kennedy',
+          'route_stop': {'id': 'stop-nuevo', 'sales_route_id': 'r2', 'visit_day': 3},
+        }),
+      ],
+      pulledAt: null,
+      now: DateTime(2026, 10, 14, 10),
+    );
+
+    expect(route.routeNames, ['Ruta Centro', 'Ruta Norte']);
+    expect(route.stops.map((stop) => stop.routeStopId), ['r1-1', 'r1-2', 'r2-1', 'r2-2', 'stop-nuevo']);
+    expect(route.stops.last.routeName, 'Ruta Norte', reason: 'the new customer goes to the end of its own route');
+    expect(route.stops.last.visitOrder, 3);
+  });
+
   test('the menu shows what the server allows, not a list per role', () {
     final manifest = SyncManifest.fromJson({
       'resources': {
