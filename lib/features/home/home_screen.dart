@@ -20,7 +20,9 @@ class HomeScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final session = ref.watch(sessionProvider).value!;
+    final session = ref.watch(sessionProvider).value;
+    // Right after signing out this screen rebuilds once before the router shows the login.
+    if (session == null) return const Scaffold();
     ref.watch(syncProvider);
     final manifest = ref.watch(manifestProvider).value;
     final modules = manifest == null ? const <AppModule>[] : modulesFor(manifest, session);
@@ -76,9 +78,24 @@ class HomeScreen extends ConsumerWidget {
           ],
         ),
       );
-      if (confirmed != true) return;
+      if (confirmed != true || !context.mounted) return;
     }
-    await ref.read(sessionProvider.notifier).logout();
+    final navigator = Navigator.of(context, rootNavigator: true);
+    final notifier = ref.read(sessionProvider.notifier);
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const AlertDialog(
+        content: Row(children: [
+          SizedBox.square(dimension: 22, child: CircularProgressIndicator(strokeWidth: 2)),
+          SizedBox(width: 16),
+          Expanded(child: Text('Cerrando sesión…')),
+        ]),
+      ),
+    );
+    await notifier.prepareLogout();
+    navigator.pop();
+    await notifier.endSession();
   }
 }
 

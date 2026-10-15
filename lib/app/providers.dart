@@ -85,17 +85,23 @@ class SessionController extends AsyncNotifier<Session?> {
   }
 
   /// Sends what is pending first. Local data stays for the same user's next login.
-  Future<int> logout() async {
+  /// First step of signing out: send what is pending and close the token on the server.
+  /// Never keeps the user waiting; without signal the queue stays for the next login.
+  Future<void> prepareLogout() async {
     final engine = ref.read(syncEngineProvider);
     try {
-      await engine?.pushOnly();
-      await ref.read(apiProvider)?.logout();
+      await Future(() async {
+        await engine?.pushOnly();
+        await ref.read(apiProvider)?.logout();
+      }).timeout(const Duration(seconds: 8));
     } catch (_) {
-      // Without signal the session still closes on the phone; the token expires on the server.
+      // The session still closes on the phone; the token expires on the server.
     }
-    await ref.read(secureStoreProvider).clearSession();
-    state = const AsyncData(null);
-    return _pendingCount();
+  }
+
+  Future<void> logout() async {
+    await prepareLogout();
+    await endSession();
   }
 
   /// The server no longer accepts this session (blocked phone or expired token).
@@ -104,14 +110,6 @@ class SessionController extends AsyncNotifier<Session?> {
     state = const AsyncData(null);
   }
 
-  Future<int> _pendingCount() async {
-    final db = ref.read(databaseProvider);
-    return (db.selectOnly(db.outbox)
-          ..addColumns([db.outbox.id.count()])
-          ..where(db.outbox.status.equals(OutboxStatus.pending)))
-        .map((row) => row.read(db.outbox.id.count()) ?? 0)
-        .getSingle();
-  }
 }
 
 class SyncStatus {

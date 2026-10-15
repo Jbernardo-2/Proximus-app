@@ -17,7 +17,8 @@ class PreventaActions {
     required LocationSession location,
     String? notes,
   }) async {
-    final session = _ref.read(sessionProvider).value!;
+    final session = _ref.read(sessionProvider).value;
+    if (session == null) throw StateError('La sesión se cerró. Inicia sesión de nuevo.');
     final at = DateTime.now();
     final position = await location.take();
     await _ref.read(outboxProvider).enqueue(
