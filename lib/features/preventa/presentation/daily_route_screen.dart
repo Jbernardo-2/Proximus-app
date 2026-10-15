@@ -170,6 +170,7 @@ class _StopCard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final balance = ref.watch(customerBalancesProvider)[stop.customer.id];
+    final canCollect = ref.watch(manifestProvider).value?.supports('customer.payment') ?? false;
     final customer = stop.customer;
     final phone = customer.phone ?? customer.whatsapp;
     final whatsapp = customer.whatsapp ?? customer.phone;
@@ -295,7 +296,11 @@ class _StopCard extends ConsumerWidget {
                 ],
               ),
               const SizedBox(height: 4),
-              VisitActions(onNoSale: () => _act(context, ref, 'no_sale'), onOrder: () => context.push('/order/${customer.id}')),
+              VisitActions(
+                onNoSale: () => _act(context, ref, 'no_sale'),
+                onPayment: canCollect && balance != null && !balance.outstanding.isZero ? () => context.push('/payment/${customer.id}') : null,
+                onOrder: () => context.push('/order/${customer.id}'),
+              ),
             ],
           ),
         ),

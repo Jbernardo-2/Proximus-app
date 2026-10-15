@@ -109,6 +109,7 @@ void main() {
     await tester.pumpWidget(ProviderScope(
       overrides: [
         apiProvider.overrideWithValue(null),
+        manifestProvider.overrideWithValue(const AsyncData(null)),
         customerProfileProvider('c1').overrideWithValue(profile),
         accountEntriesProvider('c1').overrideWith((ref) async => [
               AccountEntry.fromJson(const {'type': 'customer_payment', 'type_label': 'Abono', 'receipt_number': 'ABO-M001-000001', 'debit_amount': '0', 'credit_amount': '200', 'occurred_at': '2026-10-12T15:00:00Z'}),

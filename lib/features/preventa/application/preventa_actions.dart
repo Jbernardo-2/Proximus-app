@@ -4,6 +4,8 @@ import '../../../app/providers.dart';
 import '../../../core/location_capture.dart';
 import '../../../data/database.dart';
 import '../data/order_draft.dart';
+import '../data/payment_draft.dart';
+import '../documents/payment_receipt.dart';
 import '../data/preventa_models.dart';
 import '../data/preventa_operations.dart';
 
@@ -67,6 +69,63 @@ class PreventaActions {
         );
     _send();
     return operation;
+  }
+
+  /// Registers an account payment with a receipt number of this phone's series and
+  /// returns the receipt to print or share right away.
+  Future<PaymentReceipt> recordPayment({
+    required LocalCustomer customer,
+    required PaymentDraft draft,
+    required LocationSession location,
+  }) async {
+    final session = _ref.read(sessionProvider).value;
+    if (session == null) throw StateError('La sesión se cerró. Inicia sesión de nuevo.');
+    final manifest = _ref.read(manifestProvider).value;
+    final methodLabels = {for (final option in manifest?.options('payment_methods') ?? const <({String value, String label})>[]) option.value: option.label};
+    final at = DateTime.now();
+    final position = await location.take();
+    late PaymentReceipt receipt;
+
+    await _ref.read(outboxProvider).enqueue(
+          deviceCode: session.deviceCode,
+          type: 'customer.payment',
+          summary: customer.businessName,
+          build: (number) async {
+            final receiptNumber = await number('customer_payment');
+            final applied = [for (final debt in draft.debts) if (draft.allocations.containsKey(debt.id)) debt];
+            receipt = PaymentReceipt(
+              number: receiptNumber,
+              issuedAt: at,
+              company: manifest?.company ?? const {},
+              customerName: customer.businessName,
+              customerCode: customer.code,
+              collectedBy: session.userName,
+              lines: [
+                for (final line in draft.lines) (label: methodLabels[line.method] ?? line.method, reference: line.reference, amount: line.amount),
+              ],
+              allocations: [
+                for (final debt in applied) (document: debt.documentNumber ?? 'Saldo', before: debt.outstanding, applied: draft.allocations[debt.id]!),
+              ],
+              total: draft.amount,
+              debtBefore: draft.totalDebt,
+            );
+            return {
+              ...PreventaOperations.accountPayment(
+                customerId: customer.id,
+                receiptNumber: receiptNumber,
+                amount: draft.amount,
+                lines: [for (final line in draft.lines) (method: line.method, amount: line.amount, reference: line.reference)],
+                allocations: [for (final entry in draft.allocations.entries) (receivableId: entry.key, amount: entry.value)],
+                at: at,
+                location: position,
+              ),
+              // Kept on the phone to reprint the receipt; the server ignores it.
+              'receipt': receipt.toJson(),
+            };
+          },
+        );
+    _send();
+    return receipt;
   }
 
   void _send() => _ref.read(syncProvider.notifier).sync(pushOnly: true);

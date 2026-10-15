@@ -36,3 +36,7 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+
+# pdf 3.12 caps archive below 4.1; newer image releases need a later archive.
+dependency_overrides:
+  image: 4.5.4

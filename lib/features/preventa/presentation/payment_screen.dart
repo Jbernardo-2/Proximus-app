@@ -1,0 +1,258 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
+
+import '../../../app/providers.dart';
+import '../../../app/theme.dart';
+import '../../../core/decimal_value.dart';
+import '../../../core/formatting.dart';
+import '../../../core/location_capture.dart';
+import '../application/preventa_actions.dart';
+import '../data/payment_draft.dart';
+import '../data/preventa_models.dart';
+import 'receipt_screen.dart';
+
+final _date = DateFormat('dd/MM/yyyy');
+
+/// Registers an account payment: amount, the debts it pays and how it was paid.
+class PaymentScreen extends ConsumerStatefulWidget {
+  const PaymentScreen({super.key, required this.customerId});
+
+  final String customerId;
+
+  @override
+  ConsumerState<PaymentScreen> createState() => _PaymentScreenState();
+}
+
+class _PaymentScreenState extends ConsumerState<PaymentScreen> {
+  late final LocationSession _location = ref.read(locationServiceProvider).start();
+  final _amount = TextEditingController();
+  final List<TextEditingController> _lineAmounts = [];
+  final List<TextEditingController> _references = [TextEditingController()];
+  PaymentDraft? _draft;
+  bool _saving = false;
+
+  @override
+  void dispose() {
+    for (final controller in [_amount, ..._lineAmounts, ..._references]) {
+      controller.dispose();
+    }
+    super.dispose();
+  }
+
+  void _setAmount(String text) {
+    final value = parseAmount(text) ?? DecimalValue.zero;
+    setState(() => _draft = _draft!.withAmount(value));
+  }
+
+  void _payAll() {
+    final total = _draft!.totalDebt;
+    _amount.text = total.toFixed(2);
+    _setAmount(_amount.text);
+  }
+
+  Future<void> _editAllocation(LocalReceivable debt) async {
+    final controller = TextEditingController(text: (_draft!.allocations[debt.id] ?? DecimalValue.zero).toFixed(2));
+    final value = await showDialog<DecimalValue>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Aplicar a ${debt.documentNumber ?? 'la deuda'}'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          decoration: InputDecoration(labelText: 'Monto', helperText: 'Debe ${money(debt.outstanding)}'),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar')),
+          FilledButton(onPressed: () => Navigator.pop(context, parseAmount(controller.text)), child: const Text('Aplicar')),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (value == null) return;
+    setState(() {
+      _draft = _draft!.withAllocation(debt.id, value);
+      _amount.text = _draft!.amount.toFixed(2);
+    });
+  }
+
+  void _addMethod(List<({String value, String label})> methods) {
+    final draft = _draft!;
+    final used = draft.lines.map((line) => line.method).toSet();
+    final next = methods.where((method) => !used.contains(method.value)).firstOrNull?.value ?? 'other';
+    if (_lineAmounts.isEmpty) {
+      _lineAmounts.add(TextEditingController(text: draft.lines.single.amount.toFixed(2)));
+    }
+    _lineAmounts.add(TextEditingController());
+    _references.add(TextEditingController());
+    setState(() => _draft = draft.withLines([...draft.lines, PaymentLine(method: next, amount: DecimalValue.zero)]));
+  }
+
+  void _removeMethod(int index) {
+    final lines = [..._draft!.lines]..removeAt(index);
+    _lineAmounts.removeAt(index).dispose();
+    _references.removeAt(index).dispose();
+    if (lines.length == 1) {
+      for (final controller in _lineAmounts) {
+        controller.dispose();
+      }
+      _lineAmounts.clear();
+      lines[0] = lines[0].copyWith(amount: _draft!.amount);
+    }
+    setState(() => _draft = _draft!.withLines(lines));
+  }
+
+  void _updateLine(int index, {String? method, String? amount, String? reference}) {
+    final lines = [..._draft!.lines];
+    final current = lines[index];
+    lines[index] = PaymentLine(
+      method: method ?? current.method,
+      amount: amount == null ? current.amount : (parseAmount(amount) ?? DecimalValue.zero),
+      reference: reference ?? current.reference,
+    );
+    setState(() => _draft = _draft!.withLines(lines));
+  }
+
+  Future<void> _save(LocalCustomer customer) async {
+    setState(() => _saving = true);
+    try {
+      final receipt = await ref.read(preventaActionsProvider).recordPayment(customer: customer, draft: _draft!, location: _location);
+      if (!mounted) return;
+      Navigator.of(context).pushReplacement(MaterialPageRoute<void>(builder: (_) => ReceiptScreen(receipt: receipt, justIssued: true)));
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _saving = false);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('No se pudo registrar: $error')));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final profile = ref.watch(customerProfileProvider(widget.customerId));
+    final manifest = ref.watch(manifestProvider).value;
+    if (profile == null) {
+      return Scaffold(appBar: AppBar(title: const Text('Abono')), body: const Center(child: Text('Este cliente no está en el teléfono.')));
+    }
+    final draft = _draft ??= PaymentDraft.start(profile.receivables);
+    if (draft.debts.isEmpty) {
+      return Scaffold(appBar: AppBar(title: const Text('Abono')), body: const Center(child: Text('El cliente no tiene deudas abiertas.')));
+    }
+    final methods = manifest?.options('payment_methods') ?? const [(value: 'cash', label: 'Efectivo')];
+    final requiringReference = manifest?.requiringReference('payment_methods') ?? const <String>{};
+    final problems = draft.problems(methodsRequiringReference: requiringReference);
+    final multiple = draft.lines.length > 1;
+
+    return Scaffold(
+      appBar: AppBar(title: Text('Abono · ${profile.customer.businessName}', overflow: TextOverflow.ellipsis)),
+      body: ListView(
+        padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
+        children: [
+          Row(children: [
+            const Text('Deuda total', style: TextStyle(color: AppColors.muted)),
+            const Spacer(),
+            Text(money(draft.totalDebt), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+          ]),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _amount,
+            autofocus: true,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w700),
+            decoration: InputDecoration(
+              labelText: 'Monto del abono',
+              prefixText: 'L ',
+              suffixIcon: TextButton(onPressed: _payAll, child: const Text('Todo')),
+            ),
+            onChanged: _setAmount,
+          ),
+          const SizedBox(height: 20),
+          const Text('Aplicado a', style: TextStyle(fontWeight: FontWeight.w700)),
+          const Text('Se aplica primero a lo más antiguo; toca una deuda para cambiarlo.', style: TextStyle(fontSize: 12, color: AppColors.muted)),
+          const SizedBox(height: 8),
+          for (final debt in draft.debts)
+            Card(
+              margin: const EdgeInsets.only(bottom: 8),
+              child: ListTile(
+                onTap: () => _editAllocation(debt),
+                title: Text(debt.documentNumber ?? 'Saldo', style: const TextStyle(fontWeight: FontWeight.w600)),
+                subtitle: Text(
+                  'Debe ${money(debt.outstanding)}${debt.dueDate == null ? '' : ' · vence ${_date.format(debt.dueDate!)}'}',
+                  style: TextStyle(color: debt.isOverdue ? AppColors.danger : AppColors.muted),
+                ),
+                trailing: Text(
+                  money(draft.allocations[debt.id] ?? DecimalValue.zero),
+                  style: TextStyle(fontWeight: FontWeight.w800, color: draft.allocations.containsKey(debt.id) ? AppColors.brand : AppColors.muted),
+                ),
+              ),
+            ),
+          const SizedBox(height: 12),
+          const Text('Forma de pago', style: TextStyle(fontWeight: FontWeight.w700)),
+          const SizedBox(height: 8),
+          for (var index = 0; index < draft.lines.length; index++)
+            Card(
+              margin: const EdgeInsets.only(bottom: 8),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(12, 8, 4, 8),
+                child: Column(children: [
+                  Row(children: [
+                    Expanded(
+                      child: DropdownButtonFormField<String>(
+                        initialValue: draft.lines[index].method,
+                        isExpanded: true,
+                        decoration: const InputDecoration(labelText: 'Método', isDense: true),
+                        items: [for (final method in methods) DropdownMenuItem(value: method.value, child: Text(method.label))],
+                        onChanged: (value) => _updateLine(index, method: value),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    if (multiple)
+                      SizedBox(
+                        width: 120,
+                        child: TextField(
+                          controller: _lineAmounts[index],
+                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                          decoration: const InputDecoration(labelText: 'Monto', prefixText: 'L ', isDense: true),
+                          onChanged: (value) => _updateLine(index, amount: value),
+                        ),
+                      )
+                    else
+                      Padding(padding: const EdgeInsets.only(right: 8), child: Text(money(draft.lines[index].amount), style: const TextStyle(fontWeight: FontWeight.w700))),
+                    if (multiple) IconButton(tooltip: 'Quitar', icon: const Icon(Icons.close, size: 20), onPressed: () => _removeMethod(index)),
+                  ]),
+                  const SizedBox(height: 8),
+                  Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: TextField(
+                      controller: _references[index],
+                      decoration: InputDecoration(
+                        labelText: requiringReference.contains(draft.lines[index].method) ? 'Referencia (obligatoria)' : 'Referencia (opcional)',
+                        isDense: true,
+                      ),
+                      onChanged: (value) => _updateLine(index, reference: value),
+                    ),
+                  ),
+                ]),
+              ),
+            ),
+          TextButton.icon(onPressed: () => _addMethod(methods), icon: const Icon(Icons.add), label: const Text('Combinar con otra forma de pago')),
+          if (problems.isNotEmpty && !draft.amount.isZero) ...[
+            const SizedBox(height: 8),
+            for (final problem in problems.toSet()) Text('• $problem', style: const TextStyle(color: AppColors.amber)),
+          ],
+        ],
+      ),
+      bottomNavigationBar: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+          child: FilledButton(
+            onPressed: problems.isNotEmpty || _saving ? null : () => _save(profile.customer),
+            child: _saving
+                ? const SizedBox.square(dimension: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                : Text(draft.amount.isZero ? 'Registrar abono' : 'Registrar abono de ${money(draft.amount)}'),
+          ),
+        ),
+      ),
+    );
+  }
+}

@@ -6,6 +6,7 @@ final class SyncManifest {
     required this.operations,
     required this.defaultWarehouse,
     this.catalogs = const {},
+    this.company = const {},
   });
 
   factory SyncManifest.fromJson(Map<String, dynamic> json) => SyncManifest(
@@ -16,6 +17,7 @@ final class SyncManifest {
         defaultWarehouse: json['default_warehouse'] is Map
             ? (json['default_warehouse'] as Map).cast<String, dynamic>()
             : null,
+        company: (json['company'] as Map? ?? const {}).cast<String, dynamic>(),
         catalogs: (json['catalogs'] as Map? ?? const {}).map(
           (key, value) => MapEntry(key.toString(), [
             for (final item in value as List? ?? const []) (item as Map).cast<String, dynamic>(),
@@ -30,6 +32,9 @@ final class SyncManifest {
   final Set<String> operations;
   final Map<String, dynamic>? defaultWarehouse;
 
+  /// Company data printed on documents issued by the phone.
+  final Map<String, dynamic> company;
+
   /// Server lists such as visit_reasons or payment_methods: value, label and flags.
   final Map<String, List<Map<String, dynamic>>> catalogs;
 
@@ -37,6 +42,12 @@ final class SyncManifest {
         for (final item in catalogs[catalog] ?? const <Map<String, dynamic>>[])
           (value: item['value'].toString(), label: item['label'].toString()),
       ];
+
+  /// Values of a catalog whose items carry `requires_reference: true`.
+  Set<String> requiringReference(String catalog) => {
+        for (final item in catalogs[catalog] ?? const <Map<String, dynamic>>[])
+          if (item['requires_reference'] == true) item['value'].toString(),
+      };
 
   bool hasResource(String name) => resources[name]?.available ?? false;
   bool supports(String operation) => operations.contains(operation);

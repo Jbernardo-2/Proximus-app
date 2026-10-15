@@ -106,6 +106,7 @@ void main() {
     await tester.pumpWidget(ProviderScope(
       overrides: [
         apiProvider.overrideWithValue(null),
+        manifestProvider.overrideWithValue(const AsyncData(null)),
         dailyRouteProvider.overrideWithValue(AsyncData(route)),
         customerBalancesProvider.overrideWithValue({
           'c1': CustomerBalance(

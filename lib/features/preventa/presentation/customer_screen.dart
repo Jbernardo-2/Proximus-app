@@ -95,13 +95,14 @@ class _Contact extends StatelessWidget {
       );
 }
 
-class _Actions extends StatelessWidget {
+class _Actions extends ConsumerWidget {
   const _Actions({required this.profile});
 
   final CustomerProfile profile;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final canCollect = ref.watch(manifestProvider).value?.supports('customer.payment') ?? false;
     final customer = profile.customer;
     final phone = customer.phone ?? customer.whatsapp;
     final whatsapp = customer.whatsapp ?? customer.phone;
@@ -128,6 +129,7 @@ class _Actions extends StatelessWidget {
       ]),
       const SizedBox(height: 8),
       VisitActions(
+        onPayment: canCollect && profile.receivables.isNotEmpty ? () => context.push('/payment/${customer.id}') : null,
         onOrder: () => context.push('/order/${customer.id}'),
         onNoSale: () async {
           final saved = await showNoSaleSheet(context, customer, routeStopId: profile.todayStop?.routeStopId);
