@@ -81,6 +81,49 @@ void main() {
     expect(session(token: '').canSync, isFalse);
   });
 
+  test('online login, sign out and sign in again without signal (the real sequence on the phone)', () async {
+    final store = MemoryStore();
+    final db = AppDatabase(NativeDatabase.memory());
+    final server = FakeServer();
+    final container = ProviderContainer(overrides: [
+      databaseProvider.overrideWithValue(db),
+      secureStoreProvider.overrideWithValue(store),
+      sessionApiProvider.overrideWithValue((baseUrl, {token}) => FakeServerApi(server, baseUrl: baseUrl, token: token)),
+    ]);
+    addTearDown(() async {
+      container.dispose();
+      await db.close();
+    });
+    await container.read(sessionProvider.future);
+    final sessions = container.read(sessionProvider.notifier);
+
+    await sessions.login(email: 'Ana@Proximus.hn', password: 'secreta123', serverUrl: unreachable);
+    expect(container.read(sessionProvider).value!.canSync, isTrue);
+    expect(store.credential, isNotNull, reason: 'the online login leaves the fingerprint for entering without signal');
+
+    server.online = false;
+    await sessions.prepareLogout();
+    await sessions.endSession();
+    expect(container.read(sessionProvider).value, isNull);
+
+    Object? offlineError;
+    try {
+      await sessions.login(email: 'ana@proximus.hn', password: 'mala', serverUrl: unreachable);
+    } catch (error) {
+      offlineError = error;
+    }
+    expect(offlineError, isA<ApiException>().having((e) => e.isNetwork, 'shown as is, not as a network error', isFalse));
+
+    await sessions.login(email: 'ana@proximus.hn', password: 'secreta123', serverUrl: unreachable);
+    final offline = container.read(sessionProvider).value!;
+    expect(offline.userName, 'Ana Preventista');
+    expect(offline.needsReauth, isTrue);
+
+    server.online = true;
+    await sessions.login(email: offline.email, password: 'secreta123', serverUrl: unreachable);
+    expect(container.read(sessionProvider).value!.canSync, isTrue, reason: 'back online, the same user gets a session the server accepts');
+  });
+
   group('signing in without signal', () {
     late MemoryStore store;
     late AppDatabase db;
@@ -123,4 +166,50 @@ void main() {
       await expectLater(login('luis@proximus.hn', 'secreta123'), throwsA(isA<ApiException>().having((e) => e.message, 'message', contains('último usuario'))));
     });
   });
+}
+
+class FakeServer {
+  bool online = true;
+}
+
+/// The server answers like Laravel does, or fails like a phone without signal.
+class FakeServerApi extends ProximusApi {
+  FakeServerApi(this.server, {required super.baseUrl, super.token});
+
+  final FakeServer server;
+
+  void _requireSignal() {
+    if (!server.online) throw ApiException('Sin conexión con el servidor.');
+  }
+
+  @override
+  Future<Map<String, dynamic>> login({required String email, required String password, required String installationId, required String deviceName, required String appVersion}) async {
+    _requireSignal();
+    if (password != 'secreta123') throw ApiException('Las credenciales proporcionadas no son válidas.', status: 422);
+    return {
+      'token': '12|token',
+      'abilities': ['orders:manage'],
+      'expires_at': DateTime.now().add(const Duration(days: 30)).toIso8601String(),
+      'user': {'id': 7, 'name': 'Ana Preventista', 'role': 'preventista'},
+      'device': {
+        'code': 'M001',
+        'series': {'invoice': {'prefix': 'FAC-M001-', 'last_number': 0}},
+      },
+    };
+  }
+
+  @override
+  Future<void> logout() async => _requireSignal();
+
+  @override
+  Future<Map<String, dynamic>> manifest() async {
+    _requireSignal();
+    return {'resources': <String, dynamic>{}};
+  }
+
+  @override
+  Future<Map<String, dynamic>> push(List<Map<String, dynamic>> operations) async {
+    _requireSignal();
+    return {'results': <Map<String, dynamic>>[]};
+  }
 }

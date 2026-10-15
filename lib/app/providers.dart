@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:isolate';
 
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:drift/drift.dart';
@@ -28,6 +27,11 @@ const deviceName = 'Teléfono Android';
 final databaseProvider = Provider<AppDatabase>((ref) => throw UnimplementedError('Se inyecta en main().'));
 
 final secureStoreProvider = Provider<SecureStore>((ref) => SecureStore());
+
+/// How the session controller talks to the server (replaced in tests).
+final sessionApiProvider = Provider<ProximusApi Function(String baseUrl, {String? token})>(
+  (ref) => (baseUrl, {token}) => ProximusApi(baseUrl: baseUrl, token: token),
+);
 
 final sessionProvider = AsyncNotifierProvider<SessionController, Session?>(SessionController.new);
 
@@ -83,7 +87,7 @@ class SessionController extends AsyncNotifier<Session?> {
   Future<void> renewIfDue() async {
     final session = state.value;
     if (session == null || !session.shouldRenew(DateTime.now())) return;
-    final response = await ProximusApi(baseUrl: session.serverUrl, token: session.token).refresh();
+    final response = await ref.read(sessionApiProvider)(session.serverUrl, token: session.token).refresh();
     final renewed = session.copyWith(
       token: response['token'] as String,
       abilities: (response['abilities'] as List).cast<String>(),
@@ -101,7 +105,7 @@ class SessionController extends AsyncNotifier<Session?> {
     final db = ref.read(databaseProvider);
     await _step('guardar el servidor', () => store.saveServerUrl(serverUrl));
     final installationId = await _step('leer el identificador del teléfono', store.installationId);
-    final api = ProximusApi(baseUrl: serverUrl);
+    final api = ref.read(sessionApiProvider)(serverUrl);
     final response = await api.login(
       email: email,
       password: password,
@@ -132,7 +136,7 @@ class SessionController extends AsyncNotifier<Session?> {
           .map((row) => row.read(db.outbox.id.count()) ?? 0)
           .getSingle());
       if (pending > 0) {
-        await ProximusApi(baseUrl: serverUrl, token: session.token).logout().catchError((_) {});
+        await ref.read(sessionApiProvider)(serverUrl, token: session.token).logout().catchError((_) {});
         throw ApiException('Hay $pending operaciones de otro usuario sin enviar. Ese usuario debe iniciar sesión y sincronizar primero.');
       }
       await _step('limpiar los datos del usuario anterior', db.wipe);
@@ -144,7 +148,7 @@ class SessionController extends AsyncNotifier<Session?> {
     // The password fingerprint for entering without signal next time. Not worth failing the login over.
     try {
       final offlineSession = session.copyWith(token: '').toJson();
-      final credential = await Isolate.run(() => OfflineCredential.create(email: email, password: password, session: offlineSession));
+      final credential = await createCredentialInBackground(email: email, password: password, session: offlineSession);
       await store.saveOfflineCredential(credential);
     } catch (_) {}
     state = AsyncData(session);
@@ -154,18 +158,18 @@ class SessionController extends AsyncNotifier<Session?> {
     final store = ref.read(secureStoreProvider);
     final credential = await store.offlineCredential();
     if (credential == null || credential.email != email.trim().toLowerCase()) {
-      throw ApiException('Sin conexión con el servidor. Sin señal solo puede entrar el último usuario que trabajó en este teléfono.');
+      throw ApiException('Sin conexión con el servidor. Sin señal solo puede entrar el último usuario que trabajó en este teléfono.', status: 0, code: 'offline_login');
     }
     if (credential.locked) {
-      throw ApiException('Demasiados intentos sin conexión. Conéctate a internet para entrar.');
+      throw ApiException('Demasiados intentos sin conexión. Conéctate a internet para entrar.', status: 0, code: 'offline_login');
     }
 
-    final matches = await Isolate.run(() => credential.matches(email, password));
+    final matches = await verifyCredentialInBackground(credential, email, password);
     if (!matches) {
       final failed = credential.withFailedAttempt();
       await store.saveOfflineCredential(failed);
       final left = OfflineCredential.maxAttempts - failed.failedAttempts;
-      throw ApiException(left > 0 ? 'Contraseña incorrecta. Te quedan $left intentos sin conexión.' : 'Demasiados intentos sin conexión. Conéctate a internet para entrar.');
+      throw ApiException(left > 0 ? 'Contraseña incorrecta. Te quedan $left intentos sin conexión.' : 'Demasiados intentos sin conexión. Conéctate a internet para entrar.', status: 0, code: 'offline_login');
     }
 
     final session = Session.fromJson(credential.session).copyWith(needsReauth: true);
@@ -192,7 +196,7 @@ class SessionController extends AsyncNotifier<Session?> {
     if (session == null || !session.canSync) return;
     // Built here from the current session: the shared api/engine providers depend on this
     // controller, so reading them from it would be a circular dependency.
-    final api = ProximusApi(baseUrl: session.serverUrl, token: session.token);
+    final api = ref.read(sessionApiProvider)(session.serverUrl, token: session.token);
     final db = ref.read(databaseProvider);
     final engine = SyncEngine(db: db, api: api, outbox: ref.read(outboxProvider));
     try {

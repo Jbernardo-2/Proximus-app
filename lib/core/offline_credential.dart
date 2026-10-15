@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:isolate';
 import 'dart:math';
 import 'dart:typed_data';
 
@@ -102,4 +103,17 @@ Uint8List pbkdf2(String password, List<int> salt, int iterations) {
     }
   }
   return result;
+}
+
+/// Builds the credential in a background isolate. Top-level on purpose: only the
+/// arguments travel to the isolate, never the caller's surroundings (database, providers).
+Future<OfflineCredential> createCredentialInBackground({required String email, required String password, required Map<String, dynamic> session}) {
+  final args = (email: email, password: password, session: session);
+  return Isolate.run(() => OfflineCredential.create(email: args.email, password: args.password, session: args.session));
+}
+
+/// Checks a password against a credential in a background isolate (PBKDF2 takes a moment).
+Future<bool> verifyCredentialInBackground(OfflineCredential credential, String email, String password) {
+  final args = (json: credential.toJson(), email: email, password: password);
+  return Isolate.run(() => OfflineCredential.fromJson(args.json).matches(args.email, args.password));
 }
