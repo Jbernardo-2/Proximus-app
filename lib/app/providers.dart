@@ -111,11 +111,17 @@ class SessionController extends AsyncNotifier<Session?> {
   /// First step of signing out: send what is pending and close the token on the server.
   /// Never keeps the user waiting; without signal the queue stays for the next login.
   Future<void> prepareLogout() async {
-    final engine = ref.read(syncEngineProvider);
+    final session = state.value;
+    if (session == null) return;
+    // Built here from the current session: the shared api/engine providers depend on this
+    // controller, so reading them from it would be a circular dependency.
+    final api = ProximusApi(baseUrl: session.serverUrl, token: session.token);
+    final db = ref.read(databaseProvider);
+    final engine = SyncEngine(db: db, api: api, outbox: ref.read(outboxProvider));
     try {
       await Future(() async {
-        await engine?.pushOnly();
-        await ref.read(apiProvider)?.logout();
+        await engine.pushOnly();
+        await api.logout();
       }).timeout(const Duration(seconds: 8));
     } catch (_) {
       // The session still closes on the phone; the token expires on the server.

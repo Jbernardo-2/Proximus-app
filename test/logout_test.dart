@@ -47,7 +47,6 @@ void main() {
       overrides: [
         databaseProvider.overrideWithValue(db),
         secureStoreProvider.overrideWithValue(store),
-        apiProvider.overrideWithValue(null),
       ],
       child: const ProximusApp(),
     ));
