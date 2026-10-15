@@ -113,9 +113,10 @@ void main() {
       ),
     ));
     await tester.pumpAndSettle();
-    expect(find.text('Agrega los productos del pedido.'), findsOneWidget);
+    expect(find.text('Busca arriba los productos del pedido.'), findsOneWidget);
 
-    await tester.tap(find.text('Agregar producto'));
+    // Search stays open: add a product and keep going.
+    await tester.tap(find.text('Buscar y agregar productos'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Agua purificada 600 ml'));
     await tester.pumpAndSettle();
@@ -128,11 +129,32 @@ void main() {
     await tester.tap(find.text('Agregar al pedido'));
     await tester.pumpAndSettle();
 
-    expect(find.text('L 950.00'), findsWidgets);
-    expect(find.textContaining('5 × Fardo 24 · L 190.00 c/u (volumen)'), findsOneWidget);
+    expect(find.text('1 producto · L 950.00'), findsOneWidget, reason: 'the search shows the running order');
+    expect(find.text('Todos los productos ya están en el pedido.'), findsOneWidget, reason: 'products in the order leave the list');
+
+    // Searching for it shows it marked, and choosing it edits its line.
+    await tester.enterText(find.byType(TextField).first, 'agua');
+    await tester.pumpAndSettle();
+    expect(find.text('En el pedido: 5 × Fardo 24'), findsOneWidget);
+    await tester.tap(find.text('Agua purificada 600 ml'));
+    await tester.pumpAndSettle();
+    expect(find.text('Actualizar cantidad'), findsOneWidget);
+    await tester.enterText(find.widgetWithText(TextField, 'Cantidad'), '6');
+    await tester.pump();
+    await tester.tap(find.text('Actualizar cantidad'));
+    await tester.pumpAndSettle();
+    expect(find.text('1 producto · L 1,140.00'), findsOneWidget, reason: 'edited, not duplicated');
+
+    await tester.tap(find.text('Listo'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('6 × Fardo 24 · L 190.00 c/u (volumen)'), findsOneWidget);
+
+    await tester.tap(find.text('Revisar y guardar'));
+    await tester.pumpAndSettle();
     await tester.tap(find.textContaining('Crédito'));
     await tester.pumpAndSettle();
-    expect(find.text('Excede el crédito disponible en L 850.00.'), findsOneWidget);
+    expect(find.text('Excede el crédito disponible en L 1,040.00.'), findsOneWidget);
+    expect(find.text('Guardar igual'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 }

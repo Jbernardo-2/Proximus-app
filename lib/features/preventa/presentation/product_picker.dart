@@ -5,31 +5,82 @@ import '../../../app/providers.dart';
 import '../../../app/theme.dart';
 import '../../../core/decimal_value.dart';
 import '../../../core/formatting.dart';
+import '../application/order_draft_controller.dart';
 import '../data/order_draft.dart';
 import '../data/preventa_models.dart';
 
 typedef PickedProduct = ({LocalProduct product, LocalPresentation presentation, DecimalValue quantity});
 
-/// Full-screen catalog search. Returns the product, presentation and quantity chosen.
-Future<PickedProduct?> pickProduct(BuildContext context, {DateTime? day}) =>
-    Navigator.of(context).push<PickedProduct>(MaterialPageRoute(builder: (_) => ProductPickerScreen(day: day ?? DateTime.now())));
-
+/// Catalog search that stays open: each product chosen goes straight into the order.
+/// Products already in the order are left out of the list; searching for them shows
+/// them marked, and choosing one edits its line instead of duplicating it.
 class ProductPickerScreen extends ConsumerStatefulWidget {
-  const ProductPickerScreen({super.key, required this.day});
+  const ProductPickerScreen({super.key, required this.customerId});
 
-  final DateTime day;
+  final String customerId;
 
   @override
   ConsumerState<ProductPickerScreen> createState() => _ProductPickerScreenState();
 }
 
 class _ProductPickerScreenState extends ConsumerState<ProductPickerScreen> {
-  String _query = '';
+  final _search = TextEditingController();
+  final _focus = FocusNode();
+
+  @override
+  void dispose() {
+    _search.dispose();
+    _focus.dispose();
+    super.dispose();
+  }
+
+  Future<void> _choose(LocalProduct product, DecimalValue available, OrderDraft draft) async {
+    final lines = draft.lines.where((line) => line.product.id == product.id).toList();
+    final editing = lines.length == 1 ? lines.single : null;
+    final picked = await showModalBottomSheet<PickedProduct>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (_) => QuantitySheet(
+        product: product,
+        available: available,
+        day: draft.day,
+        initial: editing?.quantity,
+        presentationId: editing?.presentation.id,
+      ),
+    );
+    if (picked == null || !mounted) return;
+
+    final controller = ref.read(orderDraftProvider(widget.customerId).notifier);
+    if (editing != null && editing.presentation.id == picked.presentation.id) {
+      // Editing the line itself: the quantity typed is the new quantity.
+      controller.put(picked.product, picked.presentation, picked.quantity);
+    } else {
+      // Another presentation, or a product with several lines: add to what is there.
+      final existing = lines.where((line) => line.presentation.id == picked.presentation.id).firstOrNull;
+      controller.put(picked.product, picked.presentation, (existing?.quantity ?? DecimalValue.zero) + picked.quantity);
+    }
+    _search.clear();
+    setState(() {});
+    _focus.requestFocus();
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(duration: const Duration(seconds: 2), content: Text('Agregado: ${picked.quantity} × ${picked.presentation.name} de ${product.name}')));
+  }
 
   @override
   Widget build(BuildContext context) {
-    final terms = _query.toLowerCase().split(RegExp(r'\s+')).where((term) => term.isNotEmpty).toList();
+    final draft = ref.watch(orderDraftProvider(widget.customerId));
+    if (draft == null) return const Scaffold();
+
+    final query = _search.text;
+    final terms = query.toLowerCase().split(RegExp(r'\s+')).where((term) => term.isNotEmpty).toList();
+    final inOrder = <String, List<OrderLine>>{};
+    for (final line in draft.lines) {
+      inOrder.putIfAbsent(line.product.id, () => []).add(line);
+    }
     final products = ref.watch(productsProvider).where((product) {
+      if (terms.isEmpty) return !inOrder.containsKey(product.id);
       final haystack = [
         product.name,
         product.sku,
@@ -42,19 +93,46 @@ class _ProductPickerScreenState extends ConsumerState<ProductPickerScreen> {
     final stock = ref.watch(availableStockProvider);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Agregar producto')),
+      appBar: AppBar(
+        title: const Text('Agregar productos'),
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(22),
+          child: Padding(
+            padding: const EdgeInsets.only(left: 16, bottom: 6),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                '${draft.lines.length} ${draft.lines.length == 1 ? 'producto' : 'productos'} · ${money(draft.total)}',
+                style: const TextStyle(fontWeight: FontWeight.w600, color: AppColors.brand),
+              ),
+            ),
+          ),
+        ),
+        actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Listo'))],
+      ),
       body: Column(children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
           child: TextField(
+            controller: _search,
+            focusNode: _focus,
             autofocus: true,
-            decoration: const InputDecoration(prefixIcon: Icon(Icons.search), hintText: 'Nombre, código o código de barras'),
-            onChanged: (value) => setState(() => _query = value),
+            decoration: InputDecoration(
+              prefixIcon: const Icon(Icons.search),
+              hintText: 'Nombre, código o código de barras',
+              suffixIcon: query.isEmpty ? null : IconButton(icon: const Icon(Icons.close), onPressed: () => setState(_search.clear)),
+            ),
+            onChanged: (_) => setState(() {}),
           ),
         ),
         Expanded(
           child: products.isEmpty
-              ? Center(child: Text(_query.isEmpty ? 'No hay productos en el teléfono. Sincroniza con señal.' : 'Ningún producto coincide.', style: const TextStyle(color: AppColors.muted)))
+              ? Center(
+                  child: Text(
+                    query.isNotEmpty ? 'Ningún producto coincide.' : (inOrder.isEmpty ? 'No hay productos en el teléfono. Sincroniza con señal.' : 'Todos los productos ya están en el pedido.'),
+                    style: const TextStyle(color: AppColors.muted),
+                  ),
+                )
               : ListView.separated(
                   padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
                   itemCount: products.length,
@@ -62,23 +140,19 @@ class _ProductPickerScreenState extends ConsumerState<ProductPickerScreen> {
                   itemBuilder: (context, index) {
                     final product = products[index];
                     final available = stock[product.id] ?? DecimalValue.zero;
+                    final lines = inOrder[product.id];
+                    final outOfStock = available.isNegative || available.isZero;
                     return Card(
                       child: ListTile(
                         title: Text(product.name, style: const TextStyle(fontWeight: FontWeight.w700)),
                         subtitle: Text(
-                          '${product.sku} · ${available.isNegative || available.isZero ? 'Sin existencias' : 'Disp. ${available.toFixed(product.allowsDecimal ? 2 : 0)} ${product.baseUnit ?? ''}'}',
-                          style: TextStyle(color: available.isNegative || available.isZero ? AppColors.danger : AppColors.muted),
+                          lines != null
+                              ? 'En el pedido: ${lines.map((line) => '${line.quantity} × ${line.presentation.name}').join(', ')}'
+                              : '${product.sku} · ${outOfStock ? 'Sin existencias' : 'Disp. ${available.toFixed(product.allowsDecimal ? 2 : 0)} ${product.baseUnit ?? ''}'}',
+                          style: TextStyle(color: lines != null ? AppColors.brand : (outOfStock ? AppColors.danger : AppColors.muted)),
                         ),
-                        trailing: const Icon(Icons.add_circle_outline, color: AppColors.brand),
-                        onTap: () async {
-                          final picked = await showModalBottomSheet<PickedProduct>(
-                            context: context,
-                            isScrollControlled: true,
-                            showDragHandle: true,
-                            builder: (_) => QuantitySheet(product: product, available: available, day: widget.day),
-                          );
-                          if (picked != null && context.mounted) Navigator.pop(context, picked);
-                        },
+                        trailing: Icon(lines != null ? Icons.edit_outlined : Icons.add_circle_outline, color: AppColors.brand),
+                        onTap: () => _choose(product, available, draft),
                       ),
                     );
                   },
@@ -113,9 +187,7 @@ class _QuantitySheetState extends State<QuantitySheet> {
   void initState() {
     super.initState();
     final presentations = widget.product.sellablePresentations;
-    _presentation = presentations.where((p) => p.id == widget.presentationId).firstOrNull ??
-        presentations.where((p) => p.isBase).firstOrNull ??
-        presentations.first;
+    _presentation = presentations.where((p) => p.id == widget.presentationId).firstOrNull ?? presentations.where((p) => p.isBase).firstOrNull ?? presentations.first;
     _quantity = TextEditingController(text: widget.initial?.toString() ?? '1');
   }
 
@@ -159,6 +231,7 @@ class _QuantitySheetState extends State<QuantitySheet> {
           Expanded(
             child: TextField(
               controller: _quantity,
+              autofocus: true,
               textAlign: TextAlign.center,
               keyboardType: TextInputType.numberWithOptions(decimal: widget.product.allowsDecimal),
               decoration: InputDecoration(
