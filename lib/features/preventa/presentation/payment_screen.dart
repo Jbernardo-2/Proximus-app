@@ -31,6 +31,10 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
   final List<TextEditingController> _references = [TextEditingController()];
   PaymentDraft? _draft;
   bool _saving = false;
+  bool _debtsChanged = false;
+
+  static bool _sameDebts(List<LocalReceivable> a, List<LocalReceivable> b) =>
+      a.length == b.length && [for (var i = 0; i < a.length; i++) a[i].id == b[i].id && a[i].outstanding == b[i].outstanding].every((same) => same);
 
   @override
   void dispose() {
@@ -121,7 +125,13 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
     if (profile == null) {
       return Scaffold(appBar: AppBar(title: const Text('Abono')), body: const Center(child: Text('Este cliente no está en el teléfono.')));
     }
-    final draft = _draft ??= PaymentDraft.start(profile.receivables);
+    var draft = _draft ??= PaymentDraft.start(profile.receivables);
+    // A sync while the screen is open can change the debts (another payment, a new
+    // invoice). Re-apply the amount to the current debts instead of sending stale ones.
+    if (!_sameDebts(draft.debts, profile.receivables)) {
+      draft = _draft = PaymentDraft(debts: profile.receivables, amount: DecimalValue.zero, allocations: const {}, lines: draft.lines).withAmount(draft.amount);
+      _debtsChanged = true;
+    }
     if (draft.debts.isEmpty) {
       return Scaffold(appBar: AppBar(title: const Text('Abono')), body: const Center(child: Text('El cliente no tiene deudas abiertas.')));
     }
@@ -153,6 +163,14 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
             ),
             onChanged: _setAmount,
           ),
+          if (_debtsChanged)
+            const Padding(
+              padding: EdgeInsets.only(top: 8),
+              child: Text(
+                'Las deudas se actualizaron con la última sincronización; el monto se volvió a aplicar. Revisa la distribución.',
+                style: TextStyle(color: AppColors.amber, fontSize: 13),
+              ),
+            ),
           const SizedBox(height: 20),
           const Text('Aplicado a', style: TextStyle(fontWeight: FontWeight.w700)),
           const Text('Se aplica primero a lo más antiguo; toca una deuda para cambiarlo.', style: TextStyle(fontSize: 12, color: AppColors.muted)),

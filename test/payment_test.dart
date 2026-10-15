@@ -153,6 +153,43 @@ void main() {
     });
   });
 
+  testWidgets('a sync while the payment is open re-applies the amount to the current debts', (tester) async {
+    tester.view.physicalSize = const Size(384 * 3, 820 * 3);
+    tester.view.devicePixelRatio = 3;
+    addTearDown(tester.view.reset);
+    CustomerProfile profileWith(List<LocalReceivable> receivables) => CustomerProfile(
+          customer: const LocalCustomer(id: 'c1', code: 'CLI-1', businessName: 'Pulpería Doña Marta', address: 'Centro'),
+          balance: null,
+          receivables: receivables,
+          orders: const [],
+        );
+    final current = StateProvider<CustomerProfile>((ref) => profileWith(debts));
+    final container = ProviderContainer(overrides: [
+      apiProvider.overrideWithValue(null),
+      manifestProvider.overrideWithValue(AsyncData(SyncManifest.fromJson({'operations': ['customer.payment']}))),
+      customerProfileProvider('c1').overrideWith((ref) => ref.watch(current)),
+    ]);
+    addTearDown(container.dispose);
+
+    await tester.pumpWidget(UncontrolledProviderScope(container: container, child: const MaterialApp(home: PaymentScreen(customerId: 'c1'))));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.widgetWithText(TextField, 'Monto del abono'), '350');
+    await tester.pumpAndSettle();
+
+    // Another payment already covered most of SAL-1 (300 -> 100).
+    container.read(current.notifier).state = profileWith([
+      debts.first,
+      LocalReceivable(id: 'r-old', customerId: 'c1', documentNumber: 'SAL-1', originalAmount: d('300'), outstanding: d('100'), isOverdue: true, dueDate: DateTime(2026, 10, 1)),
+    ]);
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    expect(find.textContaining('Las deudas se actualizaron'), findsOneWidget);
+    expect(find.text('L 100.00'), findsWidgets, reason: 'SAL-1 now takes only what it still owes');
+    expect(find.text('L 250.00'), findsOneWidget, reason: 'the rest goes to the newer debt');
+    expect(find.text('Registrar abono de L 350.00'), findsOneWidget);
+  });
+
   testWidgets('applying or cancelling an amount on one debt closes the dialog cleanly', (tester) async {
     tester.view.physicalSize = const Size(384 * 3, 820 * 3);
     tester.view.devicePixelRatio = 3;

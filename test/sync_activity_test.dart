@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:proximus_app/app/providers.dart';
+import 'package:proximus_app/core/api.dart';
 import 'package:proximus_app/core/session.dart';
 import 'package:proximus_app/data/database.dart';
 import 'package:proximus_app/features/sync/sync_screen.dart';
@@ -42,6 +43,9 @@ class MemorySecureStore extends SecureStore {
 
   @override
   Future<void> clearSession() async => current = null;
+
+  @override
+  Future<void> saveSession(Session session) async => current = session;
 }
 
 void main() {
@@ -113,6 +117,25 @@ void main() {
     expect(await runBackgroundSync(store: MemorySecureStore(null), database: db, clock: () => now), isTrue, reason: 'nothing to do without a session');
   });
 
+  test('with the app closed, a session the server does not accept is kept and asks for the password', () async {
+    final db = AppDatabase(NativeDatabase.memory());
+    addTearDown(db.close);
+    Session session({String token = 't'}) =>
+        Session(serverUrl: 'http://test', token: token, user: const {'id': 1, 'name': 'Ana'}, device: const {'code': 'M001'}, abilities: const []);
+    final calls = <String>[];
+    SyncApi expiredApi(Session session) => ExpiredApi(calls);
+
+    final offline = MemorySecureStore(session(token: ''));
+    expect(await runBackgroundSync(store: offline, database: db, api: expiredApi), isTrue);
+    expect(offline.current, isNotNull, reason: 'opened without signal: nothing is sent and nobody is signed out');
+    expect(calls, isEmpty);
+
+    final expired = MemorySecureStore(session());
+    expect(await runBackgroundSync(store: expired, database: db, api: expiredApi), isTrue);
+    expect(expired.current?.userName, 'Ana');
+    expect(expired.current?.needsReauth, isTrue, reason: 'the app asks for the password when opened, as it does in the foreground');
+  });
+
   testWidgets('the activity screen shows a rejected payment and lets it be retried', (tester) async {
     await initializeDateFormatting('es');
     tester.view.physicalSize = const Size(384 * 3, 820 * 3);
@@ -171,4 +194,25 @@ void main() {
 class _NoSession extends SessionController {
   @override
   Future<Session?> build() async => null;
+}
+
+/// A server that no longer accepts the token.
+class ExpiredApi implements SyncApi {
+  ExpiredApi(this.calls);
+
+  final List<String> calls;
+
+  Never _expired(String call) {
+    calls.add(call);
+    throw ApiException('Unauthenticated.', status: 401);
+  }
+
+  @override
+  Future<Map<String, dynamic>> manifest() async => _expired('manifest');
+
+  @override
+  Future<Map<String, dynamic>> pull(String resource, {String? cursor, int limit = 200}) async => _expired('pull');
+
+  @override
+  Future<Map<String, dynamic>> push(List<Map<String, dynamic>> operations) async => _expired('push');
 }

@@ -24,10 +24,11 @@ void backgroundSyncDispatcher() {
 }
 
 /// One sync cycle without the UI. Returns false only to ask Android to retry later.
-Future<bool> runBackgroundSync({SecureStore? store, AppDatabase? database, DateTime Function()? clock}) async {
+Future<bool> runBackgroundSync({SecureStore? store, AppDatabase? database, DateTime Function()? clock, SyncApi Function(Session session)? api}) async {
   final secure = store ?? SecureStore();
   final session = await secure.session();
-  if (session == null) return true;
+  // Opened without signal or expired: only the user can fix it, with the password.
+  if (session == null || !session.canSync) return true;
 
   final db = database ?? AppDatabase();
   try {
@@ -35,16 +36,18 @@ Future<bool> runBackgroundSync({SecureStore? store, AppDatabase? database, DateT
     final now = (clock ?? DateTime.now)();
     if (heartbeat != null && now.difference(heartbeat) < _foregroundGrace) return true;
 
-    final engine = SyncEngine(db: db, api: ProximusApi(baseUrl: session.serverUrl, token: session.token), outbox: OutboxService(db));
+    final engine = SyncEngine(db: db, api: api?.call(session) ?? ProximusApi(baseUrl: session.serverUrl, token: session.token), outbox: OutboxService(db));
     final report = await engine.sync();
     return report.error == null || report.error!.isNetwork;
   } on DeviceRevokedException {
     await secure.clearSession();
     return true;
   } on SessionExpiredException {
-    await secure.clearSession();
+    // Same as in the app: keep the user in, ask for the password when it is opened.
+    await secure.saveSession(session.copyWith(needsReauth: true));
     return true;
-  } catch (_) {
+  } catch (error) {
+    debugPrint('Proximus: sincronización en segundo plano falló: $error');
     return false;
   } finally {
     if (database == null) await db.close();
