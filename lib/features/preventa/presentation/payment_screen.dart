@@ -52,25 +52,11 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
   }
 
   Future<void> _editAllocation(LocalReceivable debt) async {
-    final controller = TextEditingController(text: (_draft!.allocations[debt.id] ?? DecimalValue.zero).toFixed(2));
     final value = await showDialog<DecimalValue>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text('Aplicar a ${debt.documentNumber ?? 'la deuda'}'),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          decoration: InputDecoration(labelText: 'Monto', helperText: 'Debe ${money(debt.outstanding)}'),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar')),
-          FilledButton(onPressed: () => Navigator.pop(context, parseAmount(controller.text)), child: const Text('Aplicar')),
-        ],
-      ),
+      builder: (_) => _AllocationDialog(debt: debt, initial: _draft!.allocations[debt.id] ?? DecimalValue.zero),
     );
-    controller.dispose();
-    if (value == null) return;
+    if (value == null || !mounted) return;
     setState(() {
       _draft = _draft!.withAllocation(debt.id, value);
       _amount.text = _draft!.amount.toFixed(2);
@@ -256,4 +242,41 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
       ),
     );
   }
+}
+
+/// Amount to apply to one debt. It owns its text field, so the field is released only
+/// after the dialog has finished closing (releasing it earlier breaks the closing animation).
+class _AllocationDialog extends StatefulWidget {
+  const _AllocationDialog({required this.debt, required this.initial});
+
+  final LocalReceivable debt;
+  final DecimalValue initial;
+
+  @override
+  State<_AllocationDialog> createState() => _AllocationDialogState();
+}
+
+class _AllocationDialogState extends State<_AllocationDialog> {
+  late final _controller = TextEditingController(text: widget.initial.toFixed(2));
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+        title: Text('Aplicar a ${widget.debt.documentNumber ?? 'la deuda'}'),
+        content: TextField(
+          controller: _controller,
+          autofocus: true,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          decoration: InputDecoration(labelText: 'Monto', helperText: 'Debe ${money(widget.debt.outstanding)}'),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar')),
+          FilledButton(onPressed: () => Navigator.pop(context, parseAmount(_controller.text)), child: const Text('Aplicar')),
+        ],
+      );
 }

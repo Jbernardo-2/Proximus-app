@@ -152,4 +152,42 @@ void main() {
       await db.close();
     });
   });
+
+  testWidgets('applying or cancelling an amount on one debt closes the dialog cleanly', (tester) async {
+    tester.view.physicalSize = const Size(384 * 3, 820 * 3);
+    tester.view.devicePixelRatio = 3;
+    addTearDown(tester.view.reset);
+    final profile = CustomerProfile(
+      customer: const LocalCustomer(id: 'c1', code: 'CLI-1', businessName: 'Pulpería Doña Marta', address: 'Centro'),
+      balance: null,
+      receivables: debts,
+      orders: const [],
+    );
+
+    await tester.pumpWidget(ProviderScope(
+      overrides: [
+        apiProvider.overrideWithValue(null),
+        manifestProvider.overrideWithValue(AsyncData(SyncManifest.fromJson({'operations': ['customer.payment']}))),
+        customerProfileProvider('c1').overrideWithValue(profile),
+      ],
+      child: const MaterialApp(home: PaymentScreen(customerId: 'c1')),
+    ));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('SAL-1'));
+    await tester.pumpAndSettle();
+    expect(find.text('Aplicar a SAL-1'), findsOneWidget);
+    await tester.enterText(find.widgetWithText(TextField, 'Monto').last, '120');
+    await tester.tap(find.text('Aplicar'));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    expect(find.text('Registrar abono de L 120.00'), findsOneWidget);
+
+    await tester.tap(find.text('PED-2026-000030'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Cancelar'));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    expect(find.text('Registrar abono de L 120.00'), findsOneWidget);
+  });
 }
