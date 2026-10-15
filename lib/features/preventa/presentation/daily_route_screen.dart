@@ -295,7 +295,7 @@ class _StopCard extends ConsumerWidget {
                 ],
               ),
               const SizedBox(height: 4),
-              VisitActions(onNoSale: () => _act(context, ref, 'no_sale')),
+              VisitActions(onNoSale: () => _act(context, ref, 'no_sale'), onOrder: () => context.push('/order/${customer.id}')),
             ],
           ),
         ),

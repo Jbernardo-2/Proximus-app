@@ -43,6 +43,15 @@ final class DecimalValue implements Comparable<DecimalValue> {
   DecimalValue operator *(DecimalValue other) =>
       DecimalValue._(_coefficient * other._coefficient, scale + other.scale).normalized();
 
+  /// Quotient truncated to [scale] decimals (toward zero). Throws on division by zero.
+  DecimalValue divide(DecimalValue other, {int scale = 6}) {
+    if (other.isZero) throw ArgumentError('División entre cero.');
+    // a/10^s ÷ b/10^t = (a·10^(t+scale)) / (b·10^s), expressed with [scale] decimals.
+    final numerator = _coefficient * _powerOfTen(other.scale + scale);
+    final denominator = other._coefficient * _powerOfTen(this.scale);
+    return DecimalValue._(numerator ~/ denominator, scale).normalized();
+  }
+
   @override
   int compareTo(DecimalValue other) {
     final targetScale = scale > other.scale ? scale : other.scale;

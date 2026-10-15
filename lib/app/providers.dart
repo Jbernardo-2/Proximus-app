@@ -6,6 +6,7 @@ import 'package:drift/drift.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/api.dart';
+import '../core/decimal_value.dart';
 import '../core/location_capture.dart';
 import '../core/session.dart';
 import '../data/database.dart';
@@ -330,4 +331,58 @@ final accountEntriesProvider = FutureProvider.autoDispose.family<List<AccountEnt
   final response = await api.get('/customers/$customerId/credit');
   final entries = ((response['data'] as Map?)?['recent_entries'] as List?) ?? const [];
   return [for (final entry in entries) AccountEntry.fromJson((entry as Map).cast<String, dynamic>())];
+});
+
+/// Sellable catalog on the phone, by name.
+final productsProvider = Provider<List<LocalProduct>>((ref) {
+  final records = ref.watch(localRecordsProvider('products')).value ?? const [];
+  return [
+    for (final json in records)
+      if (json['deleted'] != true) LocalProduct.fromJson(json),
+  ].where((product) => product.isActive && product.sellablePresentations.isNotEmpty).toList()
+    ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+});
+
+/// Stock available to sell per product (base units) in the default warehouse, minus what
+/// orders recorded on the phone already reserve and the last download does not show yet.
+final availableStockProvider = Provider<Map<String, DecimalValue>>((ref) {
+  final warehouseId = ref.watch(manifestProvider).value?.defaultWarehouse?['id']?.toString();
+  final stocks = ref.watch(localRecordsProvider('stocks')).value ?? const [];
+  final outbox = ref.watch(outboxRowsProvider).value ?? const [];
+  final pulledAt = DateTime.tryParse(ref.watch(syncStateProvider('pulled_at:stocks')).value ?? '');
+  final products = {for (final product in ref.watch(productsProvider)) for (final p in product.presentations) p.id: (product.id, p.conversionFactor)};
+
+  final available = <String, DecimalValue>{
+    for (final json in stocks)
+      if (warehouseId == null || json['warehouse_id']?.toString() == warehouseId) json['product_id'].toString(): LocalStock.fromJson(json).available,
+  };
+  for (final operation in outbox) {
+    if (operation.type != 'order.create' || operation.status == OutboxStatus.rejected) continue;
+    if (operation.status == OutboxStatus.done && pulledAt != null && !(operation.processedAt?.isAfter(pulledAt) ?? false)) continue;
+    final payload = decodeRecord(operation.payload);
+    for (final item in payload['items'] as List? ?? const []) {
+      final presentation = products[(item as Map)['product_presentation_id']?.toString()];
+      if (presentation == null) continue;
+      final used = DecimalValue.parse(item['quantity']) * presentation.$2;
+      available[presentation.$1] = (available[presentation.$1] ?? DecimalValue.zero) - used;
+    }
+  }
+  return available;
+});
+
+/// A stop of the customer to tie an order to: today's, or any other of the preventista's routes.
+final routeStopForCustomerProvider = Provider.family<String?, String>((ref, customerId) {
+  final today = ref.watch(dailyRouteProvider).value?.stops.where((stop) => stop.customer.id == customerId).firstOrNull;
+  if (today != null) return today.routeStopId;
+  for (final route in ref.watch(localRecordsProvider('routes')).value ?? const <Map<String, dynamic>>[]) {
+    for (final stop in route['stops'] as List? ?? const []) {
+      if ((stop as Map)['customer_id']?.toString() == customerId) return stop['id'].toString();
+    }
+  }
+  for (final operation in ref.watch(outboxRowsProvider).value ?? const <OutboxData>[]) {
+    if (operation.type != 'customer.create' || operation.status == OutboxStatus.rejected) continue;
+    final payload = decodeRecord(operation.payload);
+    if (payload['id']?.toString() == customerId) return (payload['route_stop'] as Map?)?['id']?.toString();
+  }
+  return null;
 });

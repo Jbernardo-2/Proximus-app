@@ -2,6 +2,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../app/providers.dart';
 import '../../../core/location_capture.dart';
+import '../../../data/database.dart';
+import '../data/order_draft.dart';
 import '../data/preventa_models.dart';
 import '../data/preventa_operations.dart';
 
@@ -36,6 +38,35 @@ class PreventaActions {
           ),
         );
     _send();
+  }
+
+  /// Saves the order on the phone (confirmed) and sends it if there is signal.
+  /// Returns the queued operation so the screen can show its temporary reference.
+  Future<OutboxData> placeOrder({required OrderDraft draft, required String customerName, required LocationSession location}) async {
+    final session = _ref.read(sessionProvider).value;
+    if (session == null) throw StateError('La sesión se cerró. Inicia sesión de nuevo.');
+    if (draft.isEmpty) throw StateError('Agrega al menos un producto.');
+    final at = DateTime.now();
+    final position = await location.take();
+    final operation = await _ref.read(outboxProvider).enqueue(
+          deviceCode: session.deviceCode,
+          type: 'order.create',
+          summary: customerName,
+          build: (_) async => PreventaOperations.order(
+            customerId: draft.customerId,
+            routeStopId: draft.routeStopId,
+            takenAt: at,
+            paymentTerm: draft.paymentTerm,
+            deliveryDate: draft.deliveryDate,
+            notes: draft.notes,
+            items: [
+              for (final line in draft.lines) (presentationId: line.presentation.id, quantity: line.quantity, unitPrice: line.unitPrice, notes: null),
+            ],
+            location: position,
+          ),
+        );
+    _send();
+    return operation;
   }
 
   void _send() => _ref.read(syncProvider.notifier).sync(pushOnly: true);
