@@ -60,6 +60,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             ? 'No se pudo conectar con el servidor. Revisa la señal o la dirección del servidor.'
             : error.message,
       );
+    } catch (error) {
+      // Anything else is a problem on the phone; show it instead of failing silently.
+      setState(() => _error = error.toString());
     } finally {
       if (mounted) setState(() => _busy = false);
     }

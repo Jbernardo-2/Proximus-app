@@ -35,6 +35,17 @@ final syncEngineProvider = Provider<SyncEngine?>((ref) {
   return api == null ? null : SyncEngine(db: ref.watch(databaseProvider), api: api, outbox: ref.watch(outboxProvider));
 });
 
+/// A login that the server accepted but the phone could not finish.
+class LoginStepException implements Exception {
+  LoginStepException(this.step, this.cause);
+
+  final String step;
+  final Object cause;
+
+  @override
+  String toString() => 'El teléfono no pudo $step: $cause';
+}
+
 class SessionController extends AsyncNotifier<Session?> {
   @override
   Future<Session?> build() => ref.read(secureStoreProvider).session();
@@ -42,12 +53,13 @@ class SessionController extends AsyncNotifier<Session?> {
   Future<void> login({required String email, required String password, required String serverUrl}) async {
     final store = ref.read(secureStoreProvider);
     final db = ref.read(databaseProvider);
-    await store.saveServerUrl(serverUrl);
+    await _step('guardar el servidor', () => store.saveServerUrl(serverUrl));
+    final installationId = await _step('leer el identificador del teléfono', store.installationId);
     final api = ProximusApi(baseUrl: serverUrl);
     final response = await api.login(
       email: email,
       password: password,
-      installationId: await store.installationId(),
+      installationId: installationId,
       deviceName: deviceName,
       appVersion: appVersion,
     );
@@ -56,32 +68,43 @@ class SessionController extends AsyncNotifier<Session?> {
       throw ApiException('El servidor no registró este teléfono.');
     }
 
-    final session = Session(
+    final session = await _step('leer la respuesta del servidor', () async => Session(
       serverUrl: serverUrl,
       token: response['token'] as String,
       user: (response['user'] as Map).cast<String, dynamic>(),
       device: device,
       abilities: (response['abilities'] as List).cast<String>(),
-    );
+    ));
 
-    final owner = await store.dataOwner();
+    final owner = await _step('leer el usuario anterior', store.dataOwner);
     if (owner != null && owner != session.userId) {
-      final pending = await (db.selectOnly(db.outbox)
+      final pending = await _step('revisar la cola local', () => (db.selectOnly(db.outbox)
             ..addColumns([db.outbox.id.count()])
             ..where(db.outbox.status.equals(OutboxStatus.pending)))
           .map((row) => row.read(db.outbox.id.count()) ?? 0)
-          .getSingle();
+          .getSingle());
       if (pending > 0) {
         await ProximusApi(baseUrl: serverUrl, token: session.token).logout().catchError((_) {});
         throw ApiException('Hay $pending operaciones de otro usuario sin enviar. Ese usuario debe iniciar sesión y sincronizar primero.');
       }
-      await db.wipe();
+      await _step('limpiar los datos del usuario anterior', db.wipe);
     }
 
-    await ref.read(outboxProvider).adoptServerSeries((device['series'] as Map).cast<String, dynamic>());
-    await store.saveDataOwner(session.userId);
-    await store.saveSession(session);
+    await _step('guardar las series del teléfono en la base local', () => ref.read(outboxProvider).adoptServerSeries((device['series'] as Map).cast<String, dynamic>()));
+    await _step('guardar el usuario', () => store.saveDataOwner(session.userId));
+    await _step('guardar la sesión', () => store.saveSession(session));
     state = AsyncData(session);
+  }
+
+  /// Names the step that failed, so a problem on a phone can be told apart from a server answer.
+  Future<T> _step<T>(String name, Future<T> Function() action) async {
+    try {
+      return await action().timeout(const Duration(seconds: 20));
+    } on ApiException {
+      rethrow;
+    } catch (error) {
+      throw LoginStepException(name, error);
+    }
   }
 
   /// Sends what is pending first. Local data stays for the same user's next login.
