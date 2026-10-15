@@ -76,6 +76,17 @@ class OutboxService {
     return query.watch();
   }
 
+  /// Sends a rejected operation again (e.g. after the supervisor fixed the cause).
+  /// It keeps its client reference, so the server still cannot apply it twice.
+  Future<void> retry(int id) => (_db.update(_db.outbox)..where((o) => o.id.equals(id))).write(const OutboxCompanion(
+        status: Value(OutboxStatus.pending),
+        attempts: Value(0),
+        nextAttemptAt: Value(null),
+        message: Value(null),
+        httpStatus: Value(null),
+        processedAt: Value(null),
+      ));
+
   /// A rejected operation the user has read and dismissed.
   Future<void> dismiss(int id) => (_db.delete(_db.outbox)..where((o) => o.id.equals(id))).go();
 }

@@ -67,6 +67,16 @@ class AppDatabase extends _$AppDatabase {
   @override
   int get schemaVersion => 1;
 
+  /// The app and the background sync may open the database at the same time:
+  /// WAL lets readers and a writer coexist and the busy timeout waits instead of failing.
+  @override
+  MigrationStrategy get migration => MigrationStrategy(
+        beforeOpen: (_) async {
+          await customSelect('PRAGMA journal_mode=WAL').get();
+          await customSelect('PRAGMA busy_timeout=5000').get();
+        },
+      );
+
   Future<String?> readState(String key) async {
     final row = await (select(syncState)..where((s) => s.key.equals(key))).getSingleOrNull();
     return row?.value;

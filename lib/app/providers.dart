@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:drift/drift.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/api.dart';
@@ -15,6 +16,8 @@ import '../features/preventa/data/preventa_models.dart';
 import '../features/preventa/data/preventista_repository.dart';
 import '../sync/outbox_service.dart';
 import '../sync/sync_engine.dart';
+import '../sync/background_sync.dart';
+import '../sync/operation_view.dart';
 import '../sync/sync_manifest.dart';
 
 const appVersion = '0.1.0';
@@ -139,6 +142,9 @@ class SessionController extends AsyncNotifier<Session?> {
   /// Closes the session on the phone. It always ends, even if the keystore misbehaves.
   Future<void> endSession() async {
     try {
+      await cancelBackgroundSync().timeout(const Duration(seconds: 3));
+    } catch (_) {}
+    try {
       await ref.read(secureStoreProvider).clearSession().timeout(const Duration(seconds: 5));
     } catch (_) {
       // The session is dropped from memory anyway; the next start reads a clean keystore.
@@ -168,14 +174,23 @@ class SyncController extends Notifier<SyncStatus> {
   static const interval = Duration(minutes: 15);
 
   Timer? _timer;
+  Timer? _heartbeat;
   StreamSubscription<List<ConnectivityResult>>? _connectivity;
+  AppLifecycleListener? _lifecycle;
 
   @override
   SyncStatus build() {
     final engine = ref.watch(syncEngineProvider);
+    // Each build owns what it starts; clear it so a rebuild (session change) never releases it twice.
     ref.onDispose(() {
       _timer?.cancel();
+      _heartbeat?.cancel();
       _connectivity?.cancel();
+      _lifecycle?.dispose();
+      _timer = null;
+      _heartbeat = null;
+      _connectivity = null;
+      _lifecycle = null;
     });
 
     if (engine != null) {
@@ -183,9 +198,30 @@ class SyncController extends Notifier<SyncStatus> {
       _connectivity = Connectivity().onConnectivityChanged.listen((results) {
         if (!results.contains(ConnectivityResult.none)) sync();
       });
+      _markForeground(true);
+      _heartbeat = Timer.periodic(const Duration(minutes: 1), (_) => _markForeground(true));
+      _lifecycle = AppLifecycleListener(
+        onResume: () {
+          _markForeground(true);
+          sync();
+        },
+        onPause: () => _markForeground(false),
+      );
+      Future(() async {
+        try {
+          await scheduleBackgroundSync();
+        } catch (_) {
+          // Not available on this platform (tests); the app still syncs while open.
+        }
+      });
       Future.microtask(sync);
     }
     return const SyncStatus();
+  }
+
+  /// Tells the background task the app is open (it then stays out of the way) or not.
+  void _markForeground(bool open) {
+    ref.read(databaseProvider).writeState(foregroundHeartbeatKey, open ? DateTime.now().toIso8601String() : null).catchError((_) {});
   }
 
   /// Something was queued while a cycle was running; send it as soon as that cycle ends.
@@ -386,3 +422,16 @@ final routeStopForCustomerProvider = Provider.family<String?, String>((ref, cust
   }
   return null;
 });
+
+/// Every operation on the phone explained for the user, newest first.
+final operationViewsProvider = Provider<List<OperationView>>((ref) {
+  final rows = ref.watch(outboxRowsProvider).value ?? const <OutboxData>[];
+  final status = ref.watch(syncProvider);
+  final offline = status.lastReport?.error?.isNetwork ?? false;
+  return [
+    for (final row in rows.reversed) OperationView.of(row, sending: status.running && row.status == OutboxStatus.pending, offline: offline),
+  ];
+});
+
+/// Seconds the phone clock is off from the server (positive: the phone is behind).
+final clockOffsetProvider = Provider<int?>((ref) => int.tryParse(ref.watch(syncStateProvider('clock_offset_seconds')).value ?? ''));

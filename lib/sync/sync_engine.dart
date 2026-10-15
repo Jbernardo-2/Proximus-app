@@ -77,6 +77,11 @@ class SyncEngine {
     try {
       final manifest = await _api.manifest();
       await _db.writeState('manifest', jsonEncode(manifest));
+      final serverTime = DateTime.tryParse(manifest['server_time']?.toString() ?? '');
+      if (serverTime != null) {
+        // How far the phone clock is from the server; visits are recorded with the phone time.
+        await _db.writeState('clock_offset_seconds', '${serverTime.difference(_now()).inSeconds}');
+      }
       final series = (manifest['device'] as Map<String, dynamic>?)?['series'];
       if (series is Map<String, dynamic>) {
         await _outbox.adoptServerSeries(series);

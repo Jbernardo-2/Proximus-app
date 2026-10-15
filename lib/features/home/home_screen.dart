@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../app/modules.dart';
 import '../../app/providers.dart';
 import '../../app/theme.dart';
+import '../sync/sync_screen.dart';
 import '../sync/sync_summary_card.dart';
 
 const roleLabels = {
@@ -43,6 +44,7 @@ class HomeScreen extends ConsumerWidget {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          const ClockWarning(),
           SyncSummaryCard(onTap: () => context.go('/sync')),
           const SizedBox(height: 24),
           const Text('Módulos', style: TextStyle(fontWeight: FontWeight.w700, color: AppColors.ink)),
