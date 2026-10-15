@@ -156,7 +156,7 @@ class _OrderScreenState extends ConsumerState<OrderScreen> {
                   onTap: () => _editLine(line),
                   title: Text(line.product.name, style: const TextStyle(fontWeight: FontWeight.w700)),
                   subtitle: Text(
-                    '${line.quantity} ${line.presentation.name.toLowerCase()} × ${money(line.unitPrice)}${line.hasTierPrice ? ' (volumen)' : ''}'
+                    '${line.quantity} × ${line.presentation.name} · ${money(line.unitPrice)} c/u${line.hasTierPrice ? ' (volumen)' : ''}'
                     '${warnings.shortProducts.contains(line.product.name) ? '\nSin existencias suficientes' : ''}',
                     style: TextStyle(color: warnings.shortProducts.contains(line.product.name) ? AppColors.amber : AppColors.muted),
                   ),

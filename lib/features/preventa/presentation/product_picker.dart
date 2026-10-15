@@ -180,7 +180,7 @@ class _QuantitySheetState extends State<QuantitySheet> {
           const SizedBox(height: 4),
         ],
         Text(
-          short ? 'Existencias insuficientes: hay $inPresentation ${_presentation.name.toLowerCase()} disponibles. Puedes agregarlo igual.' : 'Disponibles: $inPresentation ${_presentation.name.toLowerCase()}',
+          short ? 'Existencias insuficientes: disponibles $inPresentation × ${_presentation.name}. Puedes agregarlo igual.' : 'Disponibles: $inPresentation × ${_presentation.name}',
           style: TextStyle(fontSize: 13, color: short ? AppColors.amber : AppColors.muted),
         ),
         const SizedBox(height: 16),

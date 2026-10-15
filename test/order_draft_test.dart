@@ -129,7 +129,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('L 950.00'), findsWidgets);
-    expect(find.textContaining('5 fardo 24 × L 190.00 (volumen)'), findsOneWidget);
+    expect(find.textContaining('5 × Fardo 24 · L 190.00 c/u (volumen)'), findsOneWidget);
     await tester.tap(find.textContaining('Crédito'));
     await tester.pumpAndSettle();
     expect(find.text('Excede el crédito disponible en L 850.00.'), findsOneWidget);
