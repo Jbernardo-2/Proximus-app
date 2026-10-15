@@ -3,13 +3,18 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
-    <!-- usesCleartextTraffic: the test server on the local Wi-Fi is plain HTTP.
+    <!-- allowBackup/dataExtractionRules: customer data and the token must not travel to Google backups,
+         and a restored database without its keystore key leaves the app inconsistent.
+         usesCleartextTraffic: the test server on the local Wi-Fi is plain HTTP.
          Production (Hostinger) uses HTTPS; restrict this before release. -->
     <application
         android:label="Proximus"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
-        android:usesCleartextTraffic="true">
+        android:usesCleartextTraffic="true"
+        android:allowBackup="false"
+        android:fullBackupContent="false"
+        android:dataExtractionRules="@xml/data_extraction_rules">
         <activity
             android:name=".MainActivity"
             android:exported="true"

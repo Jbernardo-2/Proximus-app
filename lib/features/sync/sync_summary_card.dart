@@ -31,9 +31,13 @@ class SyncSummaryCard extends ConsumerWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      status.running ? 'Sincronizando…' : (error != null ? 'Sin conexión con el servidor' : 'Sincronizado ${relativeTime(lastSync)}'),
+                      status.running ? 'Sincronizando…' : (error != null ? (error.isNetwork ? 'Sin conexión con el servidor' : 'No se completó la sincronización') : 'Sincronizado ${relativeTime(lastSync)}'),
                       style: TextStyle(fontWeight: FontWeight.w700, color: error != null && !status.running ? AppColors.amber : AppColors.ink),
                     ),
+                    if (error != null && !error.isNetwork && !status.running) ...[
+                      const SizedBox(height: 4),
+                      Text(error.message, style: const TextStyle(fontSize: 12, color: AppColors.danger)),
+                    ],
                     const SizedBox(height: 6),
                     Wrap(spacing: 12, children: [
                       _Count(label: 'por enviar', value: counts.pending, color: counts.pending > 0 ? AppColors.amber : AppColors.muted),

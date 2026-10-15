@@ -42,20 +42,26 @@ class SecureStore {
 
   /// Generated once per installation and never changed: it is what identifies the phone.
   Future<String> installationId() async {
-    final existing = await _storage.read(key: 'installation_id');
+    final existing = await _read('installation_id');
     if (existing != null) return existing;
     final created = const Uuid().v4();
     await _storage.write(key: 'installation_id', value: created);
     return created;
   }
 
-  Future<String> serverUrl() async => await _storage.read(key: 'server_url') ?? defaultServerUrl;
+  Future<String> serverUrl() async => await _read('server_url') ?? defaultServerUrl;
 
   Future<void> saveServerUrl(String url) => _storage.write(key: 'server_url', value: url.trim());
 
   Future<Session?> session() async {
-    final raw = await _storage.read(key: 'session');
-    return raw == null ? null : Session.fromJson(jsonDecode(raw) as Map<String, dynamic>);
+    final raw = await _read('session');
+    if (raw == null) return null;
+    try {
+      return Session.fromJson(jsonDecode(raw) as Map<String, dynamic>);
+    } catch (_) {
+      await clearSession();
+      return null;
+    }
   }
 
   Future<void> saveSession(Session session) => _storage.write(key: 'session', value: jsonEncode(session.toJson()));
@@ -63,7 +69,20 @@ class SecureStore {
   Future<void> clearSession() => _storage.delete(key: 'session');
 
   /// Last user whose data is stored locally; another user means starting clean.
-  Future<int?> dataOwner() async => int.tryParse(await _storage.read(key: 'data_owner') ?? '');
+  Future<int?> dataOwner() async => int.tryParse(await _read('data_owner') ?? '');
 
   Future<void> saveDataOwner(int userId) => _storage.write(key: 'data_owner', value: '$userId');
+
+  /// Android may keep encrypted values whose key no longer exists (e.g. data restored
+  /// on a reinstall). They cannot be read again, so the keystore starts clean.
+  Future<String?> _read(String key) async {
+    try {
+      return await _storage.read(key: key).timeout(const Duration(seconds: 10));
+    } catch (_) {
+      try {
+        await _storage.deleteAll();
+      } catch (_) {}
+      return null;
+    }
+  }
 }

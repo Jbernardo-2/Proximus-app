@@ -50,7 +50,12 @@ class SyncEngine {
   Future<SyncReport>? _running;
 
   /// One cycle at a time; a second call while running joins the first.
-  Future<SyncReport> sync() => _running ??= _cycle().whenComplete(() => _running = null);
+  /// Longest a cycle may take before it is reported as stuck and the next one may start.
+  static const maxCycle = Duration(minutes: 3);
+
+  Future<SyncReport> sync() => _running ??= _cycle()
+      .timeout(maxCycle, onTimeout: () => SyncReport(pushed: 0, rejected: 0, pulled: const {}, error: ApiException('La sincronización tardó demasiado y se detuvo. Inténtalo de nuevo.', status: 0, code: 'local_timeout')))
+      .whenComplete(() => _running = null);
 
   /// Only the queue, for right after recording something with signal.
   Future<SyncReport> pushOnly() async {

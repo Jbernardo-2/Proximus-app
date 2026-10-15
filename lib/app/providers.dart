@@ -104,9 +104,13 @@ class SessionController extends AsyncNotifier<Session?> {
     await endSession();
   }
 
-  /// The server no longer accepts this session (blocked phone or expired token).
+  /// Closes the session on the phone. It always ends, even if the keystore misbehaves.
   Future<void> endSession() async {
-    await ref.read(secureStoreProvider).clearSession();
+    try {
+      await ref.read(secureStoreProvider).clearSession().timeout(const Duration(seconds: 5));
+    } catch (_) {
+      // The session is dropped from memory anyway; the next start reads a clean keystore.
+    }
     state = const AsyncData(null);
   }
 
@@ -173,6 +177,11 @@ class SyncController extends Notifier<SyncStatus> {
     } on SessionExpiredException {
       state = const SyncStatus(notice: 'Tu sesión expiró. Inicia sesión de nuevo; lo pendiente se conserva.');
       await ref.read(sessionProvider.notifier).endSession();
+    } catch (error) {
+      // Any other failure ends the cycle visibly instead of leaving "Sincronizando…" forever.
+      state = SyncStatus(
+        lastReport: SyncReport(pushed: 0, rejected: 0, pulled: const {}, error: ApiException('Error en el teléfono al sincronizar: $error', status: 0, code: 'local_error')),
+      );
     }
 
     if (_pushAgain) {
