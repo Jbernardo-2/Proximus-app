@@ -12,6 +12,7 @@ import 'features/preventa/presentation/customer_screen.dart';
 import 'features/preventa/presentation/customers_screen.dart';
 import 'features/preventa/presentation/daily_route_screen.dart';
 import 'features/preventa/presentation/new_customer_screen.dart';
+import 'features/preventa/presentation/order_detail_screen.dart';
 import 'features/preventa/presentation/order_screen.dart';
 import 'features/preventa/presentation/payment_screen.dart';
 import 'features/preventa/presentation/visited_stops_screen.dart';
@@ -56,6 +57,7 @@ final _routerProvider = Provider<GoRouter>((ref) {
         GoRoute(path: 'payment/:id', builder: (_, state) => PaymentScreen(customerId: state.pathParameters['id']!)),
         GoRoute(path: 'order/:id', builder: (_, state) => OrderScreen(customerId: state.pathParameters['id']!)),
         GoRoute(path: 'customer/:id', builder: (_, state) => CustomerScreen(customerId: state.pathParameters['id']!)),
+        GoRoute(path: 'orders/:key', builder: (_, state) => OrderDetailScreen(orderKey: state.pathParameters['key']!)),
       ]),
     ],
   );

@@ -1,18 +1,22 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:drift/drift.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:path_provider/path_provider.dart';
 
 import '../core/api.dart';
 import '../core/decimal_value.dart';
 import '../core/location_capture.dart';
 import '../core/offline_credential.dart';
+import '../core/product_images.dart';
 import '../core/session.dart';
 import '../data/database.dart';
 import '../features/preventa/data/customer_profile.dart';
+import '../features/preventa/data/order_detail.dart';
 import '../features/preventa/data/preventa_models.dart';
 import '../features/preventa/data/preventista_repository.dart';
 import '../sync/outbox_service.dart';
@@ -318,6 +322,7 @@ class SyncController extends Notifier<SyncStatus> {
       state = SyncStatus(lastReport: report);
       if (report.ok && !pushOnly) {
         await ref.read(sessionProvider.notifier).renewIfDue().catchError((_) {});
+        unawaited(ref.read(productImagesProvider.notifier).update());
       }
     } on DeviceRevokedException catch (error) {
       state = SyncStatus(notice: error.message);
@@ -503,6 +508,89 @@ final routeStopForCustomerProvider = Provider.family<String?, String>((ref, cust
   }
   return null;
 });
+
+/// Product and presentation names by presentation id, inactive ones included, to name
+/// the lines of orders that are still on the phone.
+final presentationNamesProvider = Provider<Map<String, ({String productId, String product, String presentation})>>((ref) {
+  final records = ref.watch(localRecordsProvider('products')).value ?? const [];
+  return {
+    for (final product in records)
+      for (final presentation in (product['presentations'] as List? ?? const []).cast<Map>())
+        presentation['id'].toString(): (
+          productId: product['id'].toString(),
+          product: product['name']?.toString() ?? '',
+          presentation: presentation['name']?.toString() ?? '',
+        ),
+  };
+});
+
+/// Where product thumbnails are kept; replaced in tests.
+final productImageDirectoryProvider = FutureProvider<Directory>((ref) async {
+  final base = await getApplicationSupportDirectory();
+  return Directory('${base.path}/product_images');
+});
+
+/// Product thumbnails on the phone, by product id. Updated after each full sync.
+final productImagesProvider = NotifierProvider<ProductImagesController, Map<String, String>>(ProductImagesController.new);
+
+class ProductImagesController extends Notifier<Map<String, String>> {
+  bool _updating = false;
+
+  @override
+  Map<String, String> build() {
+    _load();
+    return const {};
+  }
+
+  Future<ProductImageStore> _store() async => ProductImageStore(await ref.read(productImageDirectoryProvider.future));
+
+  Future<void> _load() async {
+    try {
+      final files = await (await _store()).index();
+      state = {...files, ...state};
+    } catch (_) {
+      // Without thumbnails the screens show an icon; nothing else depends on them.
+    }
+  }
+
+  /// Downloads new photos and removes old ones. Never blocks or fails the sync.
+  Future<void> update() async {
+    final api = ref.read(apiProvider);
+    if (api == null || _updating) return;
+    _updating = true;
+    try {
+      final store = await _store();
+      final db = ref.read(databaseProvider);
+      final rows = await (db.select(db.syncRecords)..where((r) => r.resource.equals('products'))).get();
+      final products = [for (final row in rows) decodeRecord(row.data)];
+      // Products downloaded before photos existed in the contract: download the catalog
+      // again once (products only change by delta, so they would never bring their photo).
+      if (products.any((product) => product['deleted'] != true && !product.containsKey('image_version'))) {
+        await db.writeState('cursor:products', null);
+        unawaited(ref.read(syncProvider.notifier).sync());
+        return;
+      }
+      await store.update(
+        products: products,
+        api: api,
+        onSaved: (productId, path) => state = {...state, productId: path},
+      );
+      state = await store.index();
+    } catch (_) {
+      // Retried on the next sync.
+    } finally {
+      _updating = false;
+    }
+  }
+}
+
+/// An order to look at, by the phone's client reference or the server id.
+final orderDetailProvider = Provider.family<OrderDetail?, String>((ref, key) => findOrderDetail(
+      key,
+      downloaded: ref.watch(localRecordsProvider('recent_orders')).value ?? const [],
+      outbox: ref.watch(outboxRowsProvider).value ?? const [],
+      presentationNames: ref.watch(presentationNamesProvider),
+    ));
 
 /// Every operation on the phone explained for the user, newest first.
 final operationViewsProvider = Provider<List<OperationView>>((ref) {

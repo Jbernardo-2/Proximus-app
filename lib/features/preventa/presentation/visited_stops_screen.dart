@@ -7,6 +7,7 @@ import '../../../app/theme.dart';
 import '../../../core/formatting.dart';
 import '../data/preventa_models.dart';
 import 'daily_route_screen.dart' show StatusChip;
+import 'order_detail_screen.dart';
 
 /// Customers of today's route already attended, with whether the server has what
 /// was recorded for them yet.
@@ -85,10 +86,16 @@ class _VisitedCard extends StatelessWidget {
               if (activity.hasPayment) StatusChip(text: 'Abonó ${money(activity.paymentsTotal)}', color: const Color(0xFF2F6FD0)),
               if (!activity.hasOrder && !activity.hasNoSale && !activity.hasPayment) const StatusChip(text: 'Visitado', color: Color(0xFF2F6FD0)),
             ]),
-            if (stop.orderNumber != null) ...[
-              const SizedBox(height: 6),
-              Text(stop.orderNumber!, style: const TextStyle(color: AppColors.muted, fontSize: 13)),
-            ],
+            if (stop.orderKey != null)
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton.icon(
+                  style: TextButton.styleFrom(padding: EdgeInsets.zero, visualDensity: VisualDensity.compact),
+                  onPressed: () => openOrder(context, stop.orderKey!),
+                  icon: const Icon(Icons.receipt_long_outlined, size: 18),
+                  label: Text(stop.orderNumber == null ? 'Ver pedido' : 'Ver pedido ${stop.orderNumber}'),
+                ),
+              ),
             if (stop.rejectionMessage != null) ...[
               const SizedBox(height: 6),
               Text(stop.rejectionMessage!, style: const TextStyle(color: AppColors.danger, fontSize: 13)),

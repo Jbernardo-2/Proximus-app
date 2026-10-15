@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../../app/providers.dart';
@@ -10,6 +11,7 @@ import '../../../core/location_capture.dart';
 import '../application/order_draft_controller.dart';
 import '../application/preventa_actions.dart';
 import '../data/order_draft.dart';
+import 'product_image.dart';
 import 'product_picker.dart';
 
 final _day = DateFormat("EEE d 'de' MMM", 'es');
@@ -131,6 +133,7 @@ class _OrderScreenState extends ConsumerState<OrderScreen> {
                           margin: const EdgeInsets.only(bottom: 8),
                           child: ListTile(
                             onTap: () => _editLine(draft, line),
+                            leading: ProductImage(productId: line.product.id, size: 40),
                             title: Text(line.product.name, style: const TextStyle(fontWeight: FontWeight.w700)),
                             subtitle: Text(
                               '${line.quantity} × ${line.presentation.name} · ${money(line.unitPrice)} c/u${line.hasTierPrice ? ' (volumen)' : ''}'
@@ -207,12 +210,18 @@ class _ReviewSheetState extends ConsumerState<_ReviewSheet> {
     setState(() => _saving = true);
     final navigator = Navigator.of(context);
     final messenger = ScaffoldMessenger.of(context);
+    final router = GoRouter.maybeOf(context);
     try {
-      await ref.read(preventaActionsProvider).placeOrder(draft: draft, customerName: customerName, location: widget.location);
+      final operation = await ref.read(preventaActionsProvider).placeOrder(draft: draft, customerName: customerName, location: widget.location);
       navigator
         ..pop()
         ..pop();
-      messenger.showSnackBar(SnackBar(content: Text('Pedido de $customerName guardado en el teléfono.')));
+      messenger.showSnackBar(SnackBar(
+        content: Text('Pedido de $customerName guardado en el teléfono.'),
+        action: router == null
+            ? null
+            : SnackBarAction(label: 'Ver pedido', onPressed: () => router.push('/orders/${Uri.encodeComponent(operation.clientReference)}')),
+      ));
     } catch (error, stack) {
       debugPrint('No se pudo guardar el pedido: $error\n$stack');
       if (!mounted) return;

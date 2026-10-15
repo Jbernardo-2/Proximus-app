@@ -11,6 +11,7 @@ import '../../../core/formatting.dart';
 import '../data/customer_profile.dart';
 import '../data/preventa_models.dart';
 import 'no_sale_sheet.dart';
+import 'order_detail_screen.dart';
 import 'visit_actions.dart';
 
 final _date = DateFormat('dd/MM/yyyy');
@@ -235,7 +236,10 @@ class _OrderRow extends StatelessWidget {
       LocalOperationState.rejected => AppColors.danger,
       _ => AppColors.muted,
     };
-    return Padding(
+    final key = order.clientReference ?? order.id;
+    return InkWell(
+      onTap: key == null ? null : () => openOrder(context, key),
+      child: Padding(
       padding: const EdgeInsets.symmetric(vertical: 8),
       child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Expanded(
@@ -249,7 +253,9 @@ class _OrderRow extends StatelessWidget {
           ]),
         ),
         Text(money(order.total), style: const TextStyle(fontWeight: FontWeight.w700)),
+        if (key != null) const Icon(Icons.chevron_right, color: AppColors.muted),
       ]),
+      ),
     );
   }
 }

@@ -86,6 +86,7 @@ final class PreventistaRepository {
         operationState: _combine(current.operationState, operation.status),
         orderId: operation.type == 'order.create' ? (result?['id'])?.toString() : null,
         orderNumber: operation.type == 'order.create' ? (result?['order_number'] as String?) : null,
+        orderReference: operation.type == 'order.create' ? operation.clientReference : null,
         rejectionMessage: rejected ? operation.message : null,
       );
     }

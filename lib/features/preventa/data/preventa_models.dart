@@ -109,6 +109,7 @@ final class LocalRouteActivity {
     this.activityAt,
     this.orderId,
     this.orderNumber,
+    this.orderReference,
     this.rejectionMessage,
   });
 
@@ -153,7 +154,13 @@ final class LocalRouteActivity {
   final DateTime? activityAt;
   final String? orderId;
   final String? orderNumber;
+
+  /// Client reference of an order still on the phone, to open it before the server numbers it.
+  final String? orderReference;
   final String? rejectionMessage;
+
+  /// Key to open this visit's order, if it has one.
+  String? get orderKey => orderReference ?? orderId;
 
   String get status => activity.status;
   bool get isCompleted => activity.isAttended;
@@ -163,6 +170,7 @@ final class LocalRouteActivity {
     LocalOperationState? operationState,
     String? orderId,
     String? orderNumber,
+    String? orderReference,
     String? rejectionMessage,
   }) =>
       LocalRouteActivity(
@@ -178,6 +186,7 @@ final class LocalRouteActivity {
         activityAt: activityAt,
         orderId: orderId ?? this.orderId,
         orderNumber: orderNumber ?? this.orderNumber,
+        orderReference: orderReference ?? this.orderReference,
         rejectionMessage: rejectionMessage ?? this.rejectionMessage,
       );
 }

@@ -8,6 +8,7 @@ import '../../../core/formatting.dart';
 import '../application/order_draft_controller.dart';
 import '../data/order_draft.dart';
 import '../data/preventa_models.dart';
+import 'product_image.dart';
 
 typedef PickedProduct = ({LocalProduct product, LocalPresentation presentation, DecimalValue quantity});
 
@@ -144,6 +145,7 @@ class _ProductPickerScreenState extends ConsumerState<ProductPickerScreen> {
                     final outOfStock = available.isNegative || available.isZero;
                     return Card(
                       child: ListTile(
+                        leading: ProductImage(productId: product.id),
                         title: Text(product.name, style: const TextStyle(fontWeight: FontWeight.w700)),
                         subtitle: Text(
                           lines != null
@@ -214,7 +216,11 @@ class _QuantitySheetState extends State<QuantitySheet> {
     return Padding(
       padding: EdgeInsets.fromLTRB(20, 0, 20, 20 + MediaQuery.viewInsetsOf(context).bottom),
       child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Text(widget.product.name, style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700)),
+        Row(children: [
+          ProductImage(productId: widget.product.id, size: 72),
+          const SizedBox(width: 14),
+          Expanded(child: Text(widget.product.name, style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700))),
+        ]),
         const SizedBox(height: 12),
         Wrap(spacing: 8, runSpacing: 8, children: [
           for (final presentation in widget.product.sellablePresentations)

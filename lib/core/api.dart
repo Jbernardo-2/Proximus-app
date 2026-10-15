@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:dio/dio.dart';
 
 /// Error answered by the server, or a network failure (status null).
@@ -76,6 +78,18 @@ class ProximusApi implements SyncApi {
   @override
   Future<Map<String, dynamic>> push(List<Map<String, dynamic>> operations) =>
       _send(() => _dio.post('/sync/push', data: {'operations': operations}));
+
+  /// Saves a file (a product thumbnail) to [savePath]; it only appears there once complete.
+  Future<void> download(String url, String savePath) async {
+    final partial = '$savePath.part';
+    try {
+      await _dio.download(url, partial);
+      await File(partial).rename(savePath);
+    } on DioException catch (error) {
+      await File(partial).delete().catchError((_) => File(partial));
+      throw ApiException('No se descargó la imagen.', status: error.response?.statusCode);
+    }
+  }
 
   Future<Map<String, dynamic>> get(String path, {Map<String, dynamic>? query}) =>
       _send(() => _dio.get(path, queryParameters: query));

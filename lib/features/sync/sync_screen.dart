@@ -170,6 +170,17 @@ class OperationSheet extends ConsumerWidget {
               icon: const Icon(Icons.receipt_long),
               label: const Text('Ver o reimprimir comprobante'),
             ),
+          if (view.row.type == 'order.create')
+            OutlinedButton.icon(
+              style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(46)),
+              onPressed: () {
+                final router = GoRouter.of(context);
+                Navigator.of(context).pop();
+                router.push('/orders/${Uri.encodeComponent(view.row.clientReference)}');
+              },
+              icon: const Icon(Icons.receipt_long_outlined),
+              label: const Text('Ver pedido'),
+            ),
           if (view.customerId != null) ...[
             const SizedBox(height: 8),
             OutlinedButton.icon(
