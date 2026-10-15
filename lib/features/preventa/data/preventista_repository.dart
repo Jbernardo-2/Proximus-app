@@ -21,6 +21,9 @@ final class DailyRoute {
   /// The route on the phone is from another day (e.g. synced yesterday, no signal today).
   bool get isStale => date != null && date != today;
 
+  List<LocalRouteActivity> get pendingStops => stops.where((stop) => !stop.isCompleted).toList();
+  List<LocalRouteActivity> get visitedStops => stops.where((stop) => stop.isCompleted).toList();
+
   int get attended => stops.where((stop) => stop.isCompleted).length;
   int get pending => stops.length - attended;
   int get withOrder => stops.where((stop) => stop.activity.hasOrder).length;

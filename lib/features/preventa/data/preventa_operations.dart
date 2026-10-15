@@ -86,6 +86,8 @@ abstract final class PreventaOperations {
     required String address,
     required int visitDay,
     String? salesRouteId,
+    String? businessType,
+    String? notes,
     String? contactName,
     String? phone,
     String? whatsapp,
@@ -98,7 +100,9 @@ abstract final class PreventaOperations {
     return {
       'id': id ?? Ulid.generate(),
       'business_name': businessName,
+      'business_type': businessType,
       'address': address,
+      'notes': notes,
       'contact_name': contactName,
       'phone': phone,
       'whatsapp': whatsapp,

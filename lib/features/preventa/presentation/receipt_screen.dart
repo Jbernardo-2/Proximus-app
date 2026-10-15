@@ -21,7 +21,8 @@ class ReceiptScreen extends StatelessWidget {
         format: format == ReceiptFormat.ticket ? PdfPageFormat.roll80 : PdfPageFormat.letter,
         onLayout: (_) => buildReceiptPdf(receipt, format),
       );
-    } catch (error) {
+    } catch (error, stack) {
+      debugPrint('Proximus: $error\n$stack');
       if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('No se pudo imprimir: $error')));
     }
   }
@@ -29,7 +30,8 @@ class ReceiptScreen extends StatelessWidget {
   Future<void> _share(BuildContext context) async {
     try {
       await Printing.sharePdf(bytes: await buildReceiptPdf(receipt, ReceiptFormat.letter), filename: receipt.filename);
-    } catch (error) {
+    } catch (error, stack) {
+      debugPrint('Proximus: $error\n$stack');
       if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('No se pudo compartir: $error')));
     }
   }

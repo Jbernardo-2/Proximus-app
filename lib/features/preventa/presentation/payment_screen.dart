@@ -120,7 +120,8 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
       final receipt = await ref.read(preventaActionsProvider).recordPayment(customer: customer, draft: _draft!, location: _location);
       if (!mounted) return;
       Navigator.of(context).pushReplacement(MaterialPageRoute<void>(builder: (_) => ReceiptScreen(receipt: receipt, justIssued: true)));
-    } catch (error) {
+    } catch (error, stack) {
+      debugPrint('No se pudo registrar el abono: $error\n$stack');
       if (!mounted) return;
       setState(() => _saving = false);
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('No se pudo registrar: $error')));

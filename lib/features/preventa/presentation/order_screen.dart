@@ -213,7 +213,8 @@ class _ReviewSheetState extends ConsumerState<_ReviewSheet> {
         ..pop()
         ..pop();
       messenger.showSnackBar(SnackBar(content: Text('Pedido de $customerName guardado en el teléfono.')));
-    } catch (error) {
+    } catch (error, stack) {
+      debugPrint('No se pudo guardar el pedido: $error\n$stack');
       if (!mounted) return;
       setState(() => _saving = false);
       messenger.showSnackBar(SnackBar(content: Text('No se pudo guardar: $error')));

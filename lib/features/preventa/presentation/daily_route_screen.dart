@@ -25,6 +25,8 @@ class DailyRouteScreen extends ConsumerWidget {
       appBar: AppBar(
         title: const Text('Ruta del día'),
         actions: [
+          if (ref.watch(manifestProvider).value?.supports('customer.create') ?? false)
+            IconButton(tooltip: 'Nuevo cliente', onPressed: () => context.push('/customers/new'), icon: const Icon(Icons.person_add_alt_1)),
           IconButton(
             tooltip: 'Sincronizar',
             onPressed: running ? null : () => ref.read(syncProvider.notifier).sync(),
@@ -51,6 +53,8 @@ class DailyRouteScreen extends ConsumerWidget {
               ),
             );
           }
+          // Visited customers leave the list; they are under "Visitados".
+          final pending = route.pendingStops;
           return RefreshIndicator(
             onRefresh: () => ref.read(syncProvider.notifier).sync(),
             child: ListView(
@@ -58,9 +62,22 @@ class DailyRouteScreen extends ConsumerWidget {
               children: [
                 if (route.isStale) ...[const _StaleBanner(), const SizedBox(height: 12)],
                 _Summary(route: route),
+                const SizedBox(height: 12),
+                OutlinedButton.icon(
+                  style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(46)),
+                  onPressed: route.attended == 0 ? null : () => context.go('/route/visited'),
+                  icon: const Icon(Icons.task_alt),
+                  label: Text('Visitados (${route.attended})'),
+                ),
                 const SizedBox(height: 16),
-                for (final (index, stop) in route.stops.indexed) ...[
-                  if (route.routeNames.length > 1 && (index == 0 || route.stops[index - 1].routeName != stop.routeName))
+                if (pending.isEmpty)
+                  const _Message(
+                    icon: Icons.emoji_events_outlined,
+                    title: 'Visitaste a todos los clientes de hoy',
+                    detail: 'Revisa en "Visitados" que todo quede confirmado.',
+                  ),
+                for (final (index, stop) in pending.indexed) ...[
+                  if (route.routeNames.length > 1 && (index == 0 || pending[index - 1].routeName != stop.routeName))
                     Padding(
                       padding: EdgeInsets.only(top: index == 0 ? 0 : 8, bottom: 8),
                       child: Text(stop.routeName, style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800, color: AppColors.muted)),
@@ -232,10 +249,10 @@ class _StopCard extends ConsumerWidget {
                 runSpacing: 6,
                 crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
-                  _Chip(text: label, color: color),
-                  if (stop.activity.hasPayment) const _Chip(text: 'Abonó', color: Color(0xFF2F6FD0)),
-                  if (stop.operationState == LocalOperationState.pending) const _Chip(text: 'Por enviar', color: AppColors.amber, outlined: true),
-                  if (stop.operationState == LocalOperationState.rejected) const _Chip(text: 'Rechazado', color: AppColors.danger, outlined: true),
+                  StatusChip(text: label, color: color),
+                  if (stop.activity.hasPayment) const StatusChip(text: 'Abonó', color: Color(0xFF2F6FD0)),
+                  if (stop.operationState == LocalOperationState.pending) const StatusChip(text: 'Por enviar', color: AppColors.amber, outlined: true),
+                  if (stop.operationState == LocalOperationState.rejected) const StatusChip(text: 'Rechazado', color: AppColors.danger, outlined: true),
                 ],
               ),
               if (balance != null) ...[
@@ -331,8 +348,8 @@ class _StopCard extends ConsumerWidget {
   }
 }
 
-class _Chip extends StatelessWidget {
-  const _Chip({required this.text, required this.color, this.outlined = false});
+class StatusChip extends StatelessWidget {
+  const StatusChip({super.key, required this.text, required this.color, this.outlined = false});
 
   final String text;
   final Color color;

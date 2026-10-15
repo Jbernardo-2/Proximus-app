@@ -12,6 +12,7 @@ import 'package:proximus_app/core/session.dart';
 import 'package:proximus_app/data/database.dart';
 import 'package:proximus_app/features/preventa/data/preventista_repository.dart';
 import 'package:proximus_app/features/preventa/presentation/daily_route_screen.dart';
+import 'package:proximus_app/features/preventa/presentation/visited_stops_screen.dart';
 import 'package:proximus_app/sync/sync_manifest.dart';
 
 Map<String, dynamic> stopJson(int order, {String status = 'pending', Map<String, dynamic> extra = const {}}) => {
@@ -99,6 +100,44 @@ void main() {
     expect(route.stops.last.visitOrder, 3);
   });
 
+  testWidgets('visited customers leave the route and show whether the server has them', (tester) async {
+    tester.view.physicalSize = const Size(384 * 3, 820 * 3);
+    tester.view.devicePixelRatio = 3;
+    addTearDown(tester.view.reset);
+
+    final route = const PreventistaRepository().mergeRouteActivity(
+      records: [
+        stopJson(1, status: 'order_taken', extra: {'has_order': true, 'orders_total': '300'}),
+        stopJson(2),
+        stopJson(3),
+      ],
+      outbox: [queued(1, 'visit.no_sale', {'customer_id': 'c2', 'route_stop_id': 's2'})],
+      pulledAt: DateTime(2026, 10, 14, 7),
+      now: DateTime(2026, 10, 14, 10),
+    );
+    expect(route.pendingStops.map((stop) => stop.routeStopId), ['s3']);
+
+    final overrides = [
+      apiProvider.overrideWithValue(null),
+      manifestProvider.overrideWithValue(const AsyncData(null)),
+      dailyRouteProvider.overrideWithValue(AsyncData(route)),
+      customerBalancesProvider.overrideWithValue(const {}),
+      outboxCountsProvider.overrideWith((ref) => Stream.value((pending: 1, rejected: 0))),
+    ];
+    await tester.pumpWidget(ProviderScope(overrides: overrides, child: const MaterialApp(home: DailyRouteScreen())));
+    await tester.pump();
+    expect(find.textContaining('número 3'), findsOneWidget);
+    expect(find.textContaining('número 1'), findsNothing);
+    expect(find.text('Visitados (2)'), findsOneWidget);
+
+    await tester.pumpWidget(ProviderScope(overrides: overrides, child: const MaterialApp(home: VisitedStopsScreen())));
+    await tester.pump();
+    expect(find.text('Confirmado'), findsOneWidget, reason: 'the order came from the server');
+    expect(find.text('Por enviar'), findsOneWidget, reason: 'the no-sale visit is still on the phone');
+    expect(find.text('Pedido L 300.00'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   test('the menu shows what the server allows, not a list per role', () {
     final manifest = SyncManifest.fromJson({
       'resources': {
@@ -119,7 +158,7 @@ void main() {
     addTearDown(tester.view.reset);
 
     final route = const PreventistaRepository().mergeRouteActivity(
-      records: [stopJson(1, status: 'order_taken', extra: {'has_order': true, 'orders_total': '1250.5', 'has_payment': true, 'payments_total': '200'}), stopJson(2)],
+      records: [stopJson(1, status: 'order_taken', extra: {'has_order': true, 'orders_total': '1250.5', 'has_payment': true, 'payments_total': '200'}), stopJson(2), stopJson(3)],
       outbox: [queued(1, 'visit.no_sale', {'customer_id': 'c2', 'route_stop_id': 's2'})],
       pulledAt: DateTime(2026, 10, 14, 7),
       now: DateTime(2026, 10, 14, 10),
@@ -131,7 +170,7 @@ void main() {
         manifestProvider.overrideWithValue(const AsyncData(null)),
         dailyRouteProvider.overrideWithValue(AsyncData(route)),
         customerBalancesProvider.overrideWithValue({
-          'c1': CustomerBalance(
+          'c3': CustomerBalance(
             allowsCredit: true,
             limit: DecimalValue.parse('5000'),
             outstanding: DecimalValue.parse('2300'),
@@ -147,16 +186,14 @@ void main() {
 
     expect(tester.takeException(), isNull);
     expect(find.text('Ruta Centro'), findsOneWidget);
-    expect(find.text('100 %'), findsOneWidget);
+    expect(find.text('67 %'), findsOneWidget);
     expect(find.text('L 1,250.50'), findsOneWidget);
     expect(find.text('L 200.00'), findsOneWidget);
-    expect(find.text('Pedido tomado'), findsOneWidget);
-    expect(find.text('Abonó'), findsOneWidget);
     expect(find.text('1 por enviar'), findsOneWidget);
-    expect(find.textContaining('L 2,300.00'), findsOneWidget);
+    expect(find.text('Visitados (2)'), findsOneWidget);
 
-    await tester.scrollUntilVisible(find.text('Por enviar'), 200);
+    await tester.scrollUntilVisible(find.textContaining('L 2,300.00'), 200);
     expect(tester.takeException(), isNull);
-    expect(find.text('Por enviar'), findsOneWidget, reason: 'the no-sale visit of stop 2 is still on the phone');
+    expect(find.text('Pendiente'), findsOneWidget, reason: 'only the customer still to visit is listed');
   });
 }

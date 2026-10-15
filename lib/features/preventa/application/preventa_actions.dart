@@ -42,6 +42,48 @@ class PreventaActions {
     _send();
   }
 
+  /// Registers a customer with ids made here, so an order or a no-sale visit can
+  /// follow right away without signal. Returns the new customer's id.
+  Future<String> registerCustomer({
+    required String businessName,
+    required String address,
+    required int visitDay,
+    String? salesRouteId,
+    String? businessType,
+    String? contactName,
+    String? phone,
+    String? whatsapp,
+    String? reference,
+    String? notes,
+    LocationSession? location,
+  }) async {
+    final session = _ref.read(sessionProvider).value;
+    if (session == null) throw StateError('La sesión se cerró. Inicia sesión de nuevo.');
+    // The customer's position is kept for good, so this waits a little longer for a fix.
+    final position = await location?.take(grace: const Duration(seconds: 8));
+    final payload = PreventaOperations.newCustomer(
+      businessName: businessName,
+      address: address,
+      visitDay: visitDay,
+      salesRouteId: salesRouteId,
+      businessType: businessType,
+      contactName: contactName,
+      phone: phone,
+      whatsapp: whatsapp,
+      reference: reference,
+      notes: notes,
+      location: position,
+    );
+    await _ref.read(outboxProvider).enqueue(
+          deviceCode: session.deviceCode,
+          type: 'customer.create',
+          summary: businessName,
+          build: (_) async => payload,
+        );
+    _send();
+    return payload['id'] as String;
+  }
+
   /// Saves the order on the phone (confirmed) and sends it if there is signal.
   /// Returns the queued operation so the screen can show its temporary reference.
   Future<OutboxData> placeOrder({required OrderDraft draft, required String customerName, required LocationSession location}) async {

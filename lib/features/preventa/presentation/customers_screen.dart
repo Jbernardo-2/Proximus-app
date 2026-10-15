@@ -25,9 +25,17 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
       return terms.every(haystack.contains);
     }).toList();
     final balances = ref.watch(customerBalancesProvider);
+    final canRegister = ref.watch(manifestProvider).value?.supports('customer.create') ?? false;
 
     return Scaffold(
       appBar: AppBar(title: const Text('Clientes')),
+      floatingActionButton: canRegister
+          ? FloatingActionButton.extended(
+              onPressed: () => context.push('/customers/new'),
+              icon: const Icon(Icons.person_add_alt_1),
+              label: const Text('Nuevo cliente'),
+            )
+          : null,
       body: Column(children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
@@ -45,7 +53,7 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                   ),
                 )
               : ListView.separated(
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 96),
                   itemCount: customers.length,
                   separatorBuilder: (_, _) => const SizedBox(height: 8),
                   itemBuilder: (context, index) {

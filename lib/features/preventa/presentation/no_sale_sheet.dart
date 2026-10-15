@@ -48,7 +48,8 @@ class _NoSaleSheetState extends ConsumerState<_NoSaleSheet> {
             location: _location,
           );
       if (mounted) Navigator.pop(context, true);
-    } catch (error) {
+    } catch (error, stack) {
+      debugPrint('No se pudo guardar la visita sin venta: $error\n$stack');
       if (!mounted) return;
       setState(() => _saving = false);
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('No se pudo guardar: $error')));
