@@ -2,16 +2,19 @@ import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:intl/date_symbol_data_local.dart';
 
 import 'app/providers.dart';
 import 'app/theme.dart';
 import 'data/database.dart';
 import 'features/home/home_screen.dart';
+import 'features/preventa/presentation/daily_route_screen.dart';
 import 'features/login/login_screen.dart';
 import 'features/sync/sync_screen.dart';
 
-void main() {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await initializeDateFormatting('es');
   runApp(ProviderScope(
     overrides: [databaseProvider.overrideWithValue(AppDatabase())],
     child: const ProximusApp(),
@@ -36,6 +39,7 @@ final _routerProvider = Provider<GoRouter>((ref) {
       GoRoute(path: '/login', builder: (_, _) => const LoginScreen()),
       GoRoute(path: '/', builder: (_, _) => const HomeScreen(), routes: [
         GoRoute(path: 'sync', builder: (_, _) => const SyncScreen()),
+        GoRoute(path: 'route', builder: (_, _) => const DailyRouteScreen()),
       ]),
     ],
   );

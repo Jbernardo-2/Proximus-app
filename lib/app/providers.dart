@@ -6,6 +6,7 @@ import 'package:drift/drift.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/api.dart';
+import '../core/location_capture.dart';
 import '../core/session.dart';
 import '../data/database.dart';
 import '../features/preventa/data/preventista_repository.dart';
@@ -153,9 +154,16 @@ class SyncController extends Notifier<SyncStatus> {
     return const SyncStatus();
   }
 
+  /// Something was queued while a cycle was running; send it as soon as that cycle ends.
+  bool _pushAgain = false;
+
   Future<void> sync({bool pushOnly = false}) async {
     final engine = ref.read(syncEngineProvider);
-    if (engine == null || state.running) return;
+    if (engine == null) return;
+    if (state.running) {
+      _pushAgain = true;
+      return;
+    }
     state = state.copyWith(running: true);
 
     try {
@@ -167,6 +175,11 @@ class SyncController extends Notifier<SyncStatus> {
     } on SessionExpiredException {
       state = const SyncStatus(notice: 'Tu sesión expiró. Inicia sesión de nuevo; lo pendiente se conserva.');
       await ref.read(sessionProvider.notifier).endSession();
+    }
+
+    if (_pushAgain) {
+      _pushAgain = false;
+      await sync(pushOnly: true);
     }
   }
 }
@@ -230,3 +243,17 @@ final dailyRouteProvider = Provider<AsyncValue<DailyRoute>>((ref) {
         pulledAt: pulledAt.requireValue == null ? null : DateTime.tryParse(pulledAt.requireValue!),
       ));
 });
+
+/// Credit per customer, adjusted by what the phone recorded after the last download.
+final customerBalancesProvider = Provider<Map<String, CustomerBalance>>((ref) {
+  final credits = ref.watch(localRecordsProvider('customer_credit')).value ?? const [];
+  final outbox = ref.watch(outboxRowsProvider).value ?? const [];
+  final pulledAt = ref.watch(syncStateProvider('pulled_at:customer_credit')).value;
+  return ref.read(preventistaRepositoryProvider).balances(
+        credits: credits,
+        outbox: outbox,
+        pulledAt: pulledAt == null ? null : DateTime.tryParse(pulledAt),
+      );
+});
+
+final locationServiceProvider = Provider<LocationCaptureService>((ref) => LocationCaptureService());

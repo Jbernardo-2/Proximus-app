@@ -131,3 +131,58 @@ final class PreventistaRepository {
   static String _day(DateTime value) =>
       '${value.year.toString().padLeft(4, '0')}-${value.month.toString().padLeft(2, '0')}-${value.day.toString().padLeft(2, '0')}';
 }
+
+/// Credit of a customer as the preventista should see it now.
+final class CustomerBalance {
+  const CustomerBalance({required this.allowsCredit, required this.limit, required this.outstanding, required this.overdue, required this.available});
+
+  final bool allowsCredit;
+  final DecimalValue limit;
+  final DecimalValue outstanding;
+  final DecimalValue overdue;
+  final DecimalValue available;
+}
+
+extension CustomerBalances on PreventistaRepository {
+  /// Downloaded credit adjusted by local operations the download does not include yet:
+  /// a payment lowers the debt and frees credit; a credit order uses credit.
+  Map<String, CustomerBalance> balances({
+    required List<Map<String, dynamic>> credits,
+    required List<OutboxData> outbox,
+    required DateTime? pulledAt,
+  }) {
+    final paid = <String, DecimalValue>{};
+    final ordered = <String, DecimalValue>{};
+
+    for (final operation in outbox) {
+      if (operation.status == OutboxStatus.rejected) continue;
+      if (operation.status == OutboxStatus.done && pulledAt != null && !(operation.processedAt?.isAfter(pulledAt) ?? false)) continue;
+      final payload = (jsonDecode(operation.payload) as Map).cast<String, dynamic>();
+      final customerId = payload['customer_id']?.toString();
+      if (customerId == null) continue;
+
+      if (operation.type == 'customer.payment') {
+        paid[customerId] = (paid[customerId] ?? DecimalValue.zero) + DecimalValue.parse(payload['amount']);
+      } else if (operation.type == 'order.create' && payload['payment_term'] == 'credit') {
+        ordered[customerId] = (ordered[customerId] ?? DecimalValue.zero) + PreventistaRepository.orderTotal(payload);
+      }
+    }
+
+    return {
+      for (final json in credits)
+        json['customer_id'].toString(): () {
+          final credit = LocalCustomerCredit.fromJson(json);
+          final payments = paid[credit.customerId] ?? DecimalValue.zero;
+          final orders = ordered[credit.customerId] ?? DecimalValue.zero;
+          final outstanding = credit.outstanding - payments;
+          return CustomerBalance(
+            allowsCredit: credit.allowsCredit,
+            limit: credit.limit,
+            outstanding: outstanding.isNegative ? DecimalValue.zero : outstanding,
+            overdue: credit.overdue,
+            available: credit.available + payments - orders,
+          );
+        }(),
+    };
+  }
+}
