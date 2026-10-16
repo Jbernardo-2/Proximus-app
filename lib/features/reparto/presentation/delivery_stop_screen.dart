@@ -37,6 +37,9 @@ class DeliveryStopScreen extends ConsumerWidget {
       );
     }
     final balance = ref.watch(customerBalancesProvider)[stop.customerId];
+    // Old debts the driver can collect at the door, apart from this delivery.
+    final canCollect = ref.watch(manifestProvider).value?.supports('customer.payment') ?? false;
+    final debts = canCollect ? ref.watch(customerProfileProvider(stop.customerId))?.receivables ?? const [] : const [];
     final customer = stop.customer;
     final phone = customer?.phone ?? customer?.whatsapp;
     final whatsapp = customer?.whatsapp ?? customer?.phone;
@@ -76,6 +79,36 @@ class DeliveryStopScreen extends ConsumerWidget {
           ),
           const SizedBox(height: 16),
           _PaymentCard(stop: stop, available: balance?.allowsCredit ?? false ? balance!.available : null, allowsCredit: balance?.allowsCredit, overdue: balance?.overdue),
+          if (debts.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(14, 12, 8, 8),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text('Deudas anteriores', style: TextStyle(color: AppColors.muted)),
+                          Text(
+                            money(debts.fold(DecimalValue.zero, (sum, debt) => sum + debt.outstanding)),
+                            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: debts.any((debt) => debt.isOverdue) ? AppColors.danger : AppColors.ink),
+                          ),
+                          Text('${debts.length} ${debts.length == 1 ? 'documento' : 'documentos'}', style: const TextStyle(fontSize: 12, color: AppColors.muted)),
+                        ],
+                      ),
+                    ),
+                    OutlinedButton.icon(
+                      onPressed: () => context.push('/payment/${stop.customerId}'),
+                      icon: const Icon(Icons.account_balance_wallet_outlined, size: 18),
+                      label: const Text('Recibir abono'),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
           const SizedBox(height: 16),
           Row(
             children: [

@@ -36,13 +36,7 @@ void main() {
     expect(splitRemove(splitRemove(lines, 2, total), 1, total).single.amount, total);
   });
 
-  test('change is only shown when the customer handed more cash than the line', () {
-    expect(cashChange(d('2500'), d('2347.83')), d('152.17'));
-    expect(cashChange(d('2347.83'), d('2347.83')), isNull);
-    expect(cashChange(d('2000'), d('2347.83')), isNull);
-  });
-
-  testWidgets('the bar always says what is left, and cash shows the change', (tester) async {
+  testWidgets('the bar always says what is left', (tester) async {
     tester.view.physicalSize = const Size(384 * 3, 820 * 3);
     tester.view.devicePixelRatio = 3;
     tester.platformDispatcher.textScaleFactorTestValue = 1.1;
@@ -81,9 +75,6 @@ void main() {
     await tester.pump();
     expect(find.text('Sobran L 1,402.17'), findsOneWidget);
 
-    await tester.enterText(find.widgetWithText(TextField, 'Recibido (opcional)'), '3100');
-    await tester.pump();
-    expect(find.text('Vuelto L 100.00'), findsOneWidget);
     expect(tester.takeException(), isNull);
 
     await tester.tap(find.byTooltip('Quitar').last);

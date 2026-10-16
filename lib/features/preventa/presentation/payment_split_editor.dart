@@ -8,7 +8,7 @@ import '../data/payment_draft.dart' show parseAmount;
 
 /// The ways a total is paid, so nobody has to do the subtraction in their head: every
 /// amount can be typed, two lines balance each other, and with more each line can
-/// absorb what is missing. Cash can take what the customer handed over to show the change.
+/// absorb what is missing.
 class PaymentSplitEditor extends StatefulWidget {
   const PaymentSplitEditor({
     super.key,
@@ -39,7 +39,6 @@ class _PaymentSplitEditorState extends State<PaymentSplitEditor> {
   final List<TextEditingController> _amounts = [];
   final List<FocusNode> _focus = [];
   final List<TextEditingController> _references = [];
-  final List<TextEditingController> _received = [];
 
   @override
   void initState() {
@@ -55,7 +54,7 @@ class _PaymentSplitEditorState extends State<PaymentSplitEditor> {
 
   @override
   void dispose() {
-    for (final controller in [..._amounts, ..._references, ..._received]) {
+    for (final controller in [..._amounts, ..._references]) {
       controller.dispose();
     }
     for (final node in _focus) {
@@ -68,14 +67,13 @@ class _PaymentSplitEditorState extends State<PaymentSplitEditor> {
   /// balancing, "Completar"), without touching the field being typed in.
   void _sync() {
     while (_amounts.length > widget.lines.length) {
-      _release(_amounts.removeLast(), _focus.removeLast(), _references.removeLast(), _received.removeLast());
+      _release(_amounts.removeLast(), _focus.removeLast(), _references.removeLast());
     }
     while (_amounts.length < widget.lines.length) {
       final line = widget.lines[_amounts.length];
       _amounts.add(TextEditingController(text: line.amount.toFixed(2)));
       _focus.add(FocusNode());
       _references.add(TextEditingController(text: line.reference ?? ''));
-      _received.add(TextEditingController());
     }
     for (var index = 0; index < widget.lines.length; index++) {
       if (_focus[index].hasFocus) continue;
@@ -84,12 +82,11 @@ class _PaymentSplitEditorState extends State<PaymentSplitEditor> {
   }
 
   /// Fields of a removed line are still on screen until the next frame: release them after it.
-  void _release(TextEditingController amount, FocusNode focus, TextEditingController reference, TextEditingController received) {
+  void _release(TextEditingController amount, FocusNode focus, TextEditingController reference) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       amount.dispose();
       focus.dispose();
       reference.dispose();
-      received.dispose();
     });
   }
 
@@ -97,7 +94,7 @@ class _PaymentSplitEditorState extends State<PaymentSplitEditor> {
 
   void _remove(int index) {
     // Shift the local fields with the line so each keeps its own text.
-    _release(_amounts.removeAt(index), _focus.removeAt(index), _references.removeAt(index), _received.removeAt(index));
+    _release(_amounts.removeAt(index), _focus.removeAt(index), _references.removeAt(index));
     _change(splitRemove(widget.lines, index, widget.total));
   }
 
@@ -179,7 +176,6 @@ class _PaymentSplitEditorState extends State<PaymentSplitEditor> {
                       ),
                     ),
                   ],
-                  if (lines[index].method == 'cash') _CashChange(controller: _received[index], amount: lines[index].amount, onChanged: () => setState(() {})),
                 ],
               ),
             ),
@@ -200,48 +196,6 @@ class _PaymentSplitEditorState extends State<PaymentSplitEditor> {
             ),
           ),
       ],
-    );
-  }
-}
-
-/// Optional, only on screen: what the customer handed over and the change to give back.
-class _CashChange extends StatelessWidget {
-  const _CashChange({required this.controller, required this.amount, required this.onChanged});
-
-  final TextEditingController controller;
-  final DecimalValue amount;
-  final VoidCallback onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    final received = parseAmount(controller.text);
-    final change = received == null ? null : cashChange(received, amount);
-    final short = received != null && received.compareTo(amount) < 0;
-    return Padding(
-      padding: const EdgeInsets.only(top: 8, right: 8),
-      child: Row(
-        children: [
-          Expanded(
-            child: TextField(
-              controller: controller,
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              decoration: const InputDecoration(labelText: 'Recibido (opcional)', prefixText: 'L ', isDense: true),
-              onChanged: (_) => onChanged(),
-            ),
-          ),
-          const SizedBox(width: 12),
-          if (change != null)
-            Text(
-              'Vuelto ${money(change)}',
-              style: const TextStyle(fontWeight: FontWeight.w800, color: AppColors.brand),
-            )
-          else if (short)
-            Text(
-              'Faltan ${money(amount - received)}',
-              style: const TextStyle(fontWeight: FontWeight.w600, color: AppColors.amber),
-            ),
-        ],
-      ),
     );
   }
 }

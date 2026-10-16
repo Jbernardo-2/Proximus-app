@@ -12,6 +12,9 @@ import 'package:proximus_app/features/reparto/application/delivery_providers.dar
 import 'package:proximus_app/features/reparto/data/delivery_models.dart';
 import 'package:proximus_app/features/reparto/data/delivery_repository.dart';
 import 'package:proximus_app/features/reparto/presentation/delivery_run_screen.dart';
+import 'package:proximus_app/features/preventa/data/customer_profile.dart' show CustomerProfile;
+import 'package:proximus_app/features/preventa/data/preventa_models.dart' show LocalCustomer, LocalReceivable;
+import 'package:proximus_app/sync/sync_manifest.dart';
 import 'package:proximus_app/features/reparto/presentation/delivery_stop_screen.dart';
 import 'package:proximus_app/features/reparto/presentation/driver_dashboard.dart';
 import 'package:proximus_app/core/decimal_value.dart';
@@ -245,7 +248,8 @@ void main() {
 }
 
 void stopAndDashboardTests() {
-  List<Override> driverOverrides({List<Map<String, dynamic>>? runs}) => [
+  List<Override> driverOverrides({List<Map<String, dynamic>>? runs, SyncManifest? manifest}) => [
+    manifestProvider.overrideWithValue(AsyncData(manifest)),
     outboxRowsProvider.overrideWith((ref) => Stream.value(const <OutboxData>[])),
     syncStateProvider('pulled_at:delivery_runs').overrideWith((ref) => Stream.value(null)),
     secureStoreProvider.overrideWithValue(MemorySecureStore(null)),
@@ -268,6 +272,30 @@ void stopAndDashboardTests() {
     addTearDown(tester.view.reset);
     addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
   }
+
+  testWidgets('at the stop the driver sees old debts and can take an account payment', (tester) async {
+    await phone(tester);
+    await tester.pumpWidget(ProviderScope(
+      overrides: [
+        ...driverOverrides(manifest: SyncManifest.fromJson({'operations': ['delivery.outcome', 'delivery.payment', 'customer.payment']})),
+        customerProfileProvider('c2').overrideWithValue(CustomerProfile(
+          customer: const LocalCustomer(id: 'c2', code: 'CAMPO-02', businessName: 'Pulpería', address: 'Centro'),
+          balance: null,
+          receivables: [
+            LocalReceivable(id: 'r1', customerId: 'c2', documentNumber: 'SAL-1', originalAmount: DecimalValue.parse('850'), outstanding: DecimalValue.parse('850'), isOverdue: true),
+          ],
+          orders: const [],
+        )),
+      ],
+      child: const MaterialApp(home: DeliveryStopScreen(runId: 'run1', stopId: 'ro2')),
+    ));
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    expect(find.text('Deudas anteriores'), findsOneWidget);
+    expect(find.text('L 850.00'), findsOneWidget);
+    expect(find.text('Recibir abono'), findsOneWidget);
+  });
 
   testWidgets('the stop shows how to reach the customer, how it is paid and what was loaded', (tester) async {
     await phone(tester);

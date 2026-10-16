@@ -37,9 +37,3 @@ List<SplitLine> splitRemove(List<SplitLine> lines, int index, DecimalValue total
   if (next.length == 1) return [(method: next.single.method, amount: total, reference: next.single.reference)];
   return next;
 }
-
-/// Change to give back when the customer hands more cash than the line: null when not.
-DecimalValue? cashChange(DecimalValue received, DecimalValue amount) {
-  final change = received - amount;
-  return change.isNegative || change.isZero ? null : change;
-}
