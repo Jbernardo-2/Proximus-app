@@ -56,10 +56,12 @@ final class RunClosing {
       }
     }
 
-    // Account payments taken today from the customers of this run, from this phone.
+    // Account payments taken from the customers of this run since it left, as the web
+    // counts them at settlement (before the departure reaches the server: since today).
+    final since = run.departedAt?.toLocal() ?? DateTime(today.year, today.month, today.day);
     for (final row in outbox) {
       if (row.type != 'customer.payment' || row.status == OutboxStatus.rejected) continue;
-      if (row.createdAt.year != today.year || row.createdAt.month != today.month || row.createdAt.day != today.day) continue;
+      if (row.createdAt.isBefore(since)) continue;
       final payload = (jsonDecode(row.payload) as Map).cast<String, dynamic>();
       if (!customers.contains(payload['customer_id']?.toString())) continue;
       count++;

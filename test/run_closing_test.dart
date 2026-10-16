@@ -109,7 +109,7 @@ void main() {
     expect(closing.notDelivered, 1);
     expect(closing.open, 1);
     expect(closing.deliveries, {'cash': d('66'), 'bank_transfer': d('20')}, reason: 'voided payments do not count');
-    expect(closing.accountPayments, {'cash': d('100'), 'card': d('50')}, reason: 'only today, only customers of this run, never rejected ones');
+    expect(closing.accountPayments, {'cash': d('100'), 'card': d('50')}, reason: 'since the departure (today, as it has not reached the server), only customers of this run, never rejected ones');
     expect(closing.accountPaymentCount, 1);
     expect(closing.cash, d('166'));
     expect(closing.collected, d('236'));
@@ -118,6 +118,20 @@ void main() {
     expect(closing.unsent, 1);
     expect(closing.rejected, 1);
     expect(closing.isFinal, isFalse);
+  });
+
+  test('a run that left yesterday counts the account payments since it left, as the web does', () {
+    final rows = outbox();
+    final run = mergeDeliveryRuns(
+      records: [
+        {...closingRun(), 'departed_at': today.subtract(const Duration(days: 1, hours: 2)).toUtc().toIso8601String()},
+      ],
+      outbox: rows,
+      customers: const [],
+      pulledAt: null,
+    ).single;
+
+    expect(RunClosing.of(run, rows, now: today).accountPayments['cash'], d('170'), reason: '100 today + 70 yesterday, after the departure');
   });
 
   testWidgets('the closing screen leads with the cash to hand over and warns while it is preliminary', (tester) async {
