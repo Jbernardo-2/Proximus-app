@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
 import 'package:printing/printing.dart';
@@ -11,10 +12,13 @@ import '../../sync/operation_status_banner.dart';
 
 /// The invoice just issued (or reprinted): print it as a ticket or letter, share it, or finish.
 class DeliveryInvoiceScreen extends StatelessWidget {
-  const DeliveryInvoiceScreen({super.key, required this.invoice, this.justIssued = false});
+  const DeliveryInvoiceScreen({super.key, required this.invoice, this.justIssued = false, this.doneLocation});
 
   final DeliveryInvoice invoice;
   final bool justIssued;
+
+  /// Where "Terminar" goes: back to the stops still to do after a payment, instead of the paid stop.
+  final String? doneLocation;
 
   Future<void> _print(BuildContext context, ReceiptFormat format) async {
     try {
@@ -77,7 +81,7 @@ class DeliveryInvoiceScreen extends StatelessWidget {
           label: const Text('Compartir'),
         ),
         const SizedBox(height: 8),
-        TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Terminar')),
+        TextButton(onPressed: () => doneLocation == null ? Navigator.of(context).pop() : context.go(doneLocation!), child: const Text('Terminar')),
       ],
     ),
   );

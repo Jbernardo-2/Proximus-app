@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 
 import '../../../app/providers.dart';
 import '../../../app/theme.dart';
+import '../../../core/decimal_value.dart';
 import '../../../core/external_apps.dart';
 import '../../../core/formatting.dart';
 import '../../preventa/data/preventa_models.dart' show LocalOperationState;
@@ -13,6 +14,7 @@ import '../application/delivery_providers.dart';
 import '../data/delivery_models.dart';
 import '../data/delivery_repository.dart';
 import 'run_closing_screen.dart' show openRunClosing;
+import 'run_debts_screen.dart' show runDebtsProvider;
 
 final _day = DateFormat("EEEE d 'de' MMMM", 'es');
 
@@ -99,6 +101,9 @@ class _RunScaffold extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final pending = run.pendingStops;
+    final runDebts = ref.watch(runDebtsProvider(run.id));
+    final debts = {for (final debt in runDebts) debt.customerId: debt.outstanding};
+    final debtTotal = runDebts.fold(DecimalValue.zero, (sum, debt) => sum + debt.outstanding);
     return Scaffold(
       appBar: AppBar(title: Text(title), actions: const [_SyncButton()]),
       body: RefreshIndicator(
@@ -107,6 +112,32 @@ class _RunScaffold extends ConsumerWidget {
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
           children: [
             _RunSummary(run: run),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(48)),
+                    onPressed: () => context.push('/deliveries/${run.id}/load'),
+                    icon: const Icon(Icons.inventory_2_outlined, size: 18),
+                    label: const FittedBox(fit: BoxFit.scaleDown, child: Text('Carga del camión')),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    style: OutlinedButton.styleFrom(
+                      minimumSize: const Size.fromHeight(48),
+                      foregroundColor: runDebts.isEmpty ? null : AppColors.danger,
+                      side: runDebts.isEmpty ? null : const BorderSide(color: AppColors.danger),
+                    ),
+                    onPressed: runDebts.isEmpty ? null : () => context.push('/deliveries/${run.id}/debts'),
+                    icon: const Icon(Icons.account_balance_wallet_outlined, size: 18),
+                    label: FittedBox(fit: BoxFit.scaleDown, child: Text(runDebts.isEmpty ? 'Sin saldos' : 'Saldos (${runDebts.length}) · ${money(debtTotal)}')),
+                  ),
+                ),
+              ],
+            ),
             const SizedBox(height: 12),
             if (!run.hasLeft) ...[_DepartButton(run: run), const SizedBox(height: 16)],
             if (pending.isEmpty) ...[
@@ -121,7 +152,7 @@ class _RunScaffold extends ConsumerWidget {
               ],
               Text(run.hasLeft ? 'Por entregar (${pending.length})' : 'Paradas (${pending.length})', style: const TextStyle(fontWeight: FontWeight.w700)),
               const SizedBox(height: 8),
-              for (final stop in pending) DeliveryStopCard(stop: stop, onTap: () => context.push('/deliveries/${run.id}/stops/${stop.id}')),
+              for (final stop in pending) DeliveryStopCard(stop: stop, debt: debts[stop.customerId], onTap: () => context.push('/deliveries/${run.id}/stops/${stop.id}')),
             ],
             if (finished.isNotEmpty) _SettlementNote(runs: finished),
           ],
@@ -327,10 +358,13 @@ class _DepartButtonState extends ConsumerState<_DepartButton> {
 
 /// A stop of the run in a list: who, what goes, how it is paid and anything to watch for.
 class DeliveryStopCard extends StatelessWidget {
-  const DeliveryStopCard({super.key, required this.stop, this.onTap});
+  const DeliveryStopCard({super.key, required this.stop, this.onTap, this.debt});
 
   final LocalDeliveryStop stop;
   final VoidCallback? onTap;
+
+  /// Old debt of the customer, to collect while there.
+  final DecimalValue? debt;
 
   @override
   Widget build(BuildContext context) {
@@ -341,6 +375,7 @@ class DeliveryStopCard extends StatelessWidget {
       if (stop.progress == StopProgress.awaitingPayment) const StatusChip(text: 'Falta cobrar', color: AppColors.amber),
       if (stop.progress == StopProgress.done) StatusChip(text: stop.statusLabel.isEmpty ? 'Terminada' : stop.statusLabel, color: AppColors.brand),
       if (stop.isCredit) const StatusChip(text: 'Crédito', color: Color(0xFF2F6FD0), outlined: true),
+      if (debt != null) StatusChip(text: 'Debe ${money(debt!)}', color: AppColors.danger, outlined: true),
       if (stop.hasShortItems && stop.progress == StopProgress.pending) const StatusChip(text: 'Carga incompleta', color: AppColors.amber, outlined: true),
       if (stop.operationState == LocalOperationState.pending) const StatusChip(text: 'Por enviar', color: AppColors.amber, outlined: true),
       if (stop.operationState == LocalOperationState.rejected) const StatusChip(text: 'Rechazado', color: AppColors.danger, outlined: true),

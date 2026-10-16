@@ -96,15 +96,25 @@ class _Finished extends ConsumerWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Terminaste la jornada ${run.runNumber}', style: const TextStyle(color: AppColors.muted, fontWeight: FontWeight.w600)),
+            Text(
+              'Terminaste la jornada ${run.runNumber}',
+              style: const TextStyle(color: AppColors.muted, fontWeight: FontWeight.w600),
+            ),
             const SizedBox(height: 10),
             const Text('Efectivo a entregar', style: TextStyle(color: AppColors.muted)),
             FittedBox(
               fit: BoxFit.scaleDown,
               alignment: Alignment.centerLeft,
-              child: Text(money(closing.cash), style: const TextStyle(fontSize: 44, fontWeight: FontWeight.w800, height: 1.1, color: AppColors.ink)),
+              child: Text(
+                money(closing.cash),
+                style: const TextStyle(fontSize: 44, fontWeight: FontWeight.w800, height: 1.1, color: AppColors.ink),
+              ),
             ),
-            if (!closing.isFinal) const Text('Hay operaciones sin enviar: sincroniza antes de entregar.', style: TextStyle(color: AppColors.amber, fontWeight: FontWeight.w600)),
+            if (!closing.isFinal)
+              const Text(
+                'Hay operaciones sin enviar: sincroniza antes de entregar.',
+                style: TextStyle(color: AppColors.amber, fontWeight: FontWeight.w600),
+              ),
             const SizedBox(height: 16),
             FilledButton.icon(onPressed: () => openRunClosing(context, run), icon: const Icon(Icons.summarize_outlined), label: const Text('Ver cierre de jornada')),
           ],

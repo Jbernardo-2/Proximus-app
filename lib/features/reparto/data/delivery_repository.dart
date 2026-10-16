@@ -93,7 +93,10 @@ LocalDeliveryStop applyOutcome(LocalDeliveryStop stop, Map<String, dynamic> payl
 /// and the invoice kept on the phone to reprint it.
 LocalDeliveryStop applyPayment(LocalDeliveryStop stop, Map<String, dynamic> payload, {required LocalOperationState state}) {
   final lines = [for (final line in (payload['allocations'] as List? ?? const []).cast<Map>()) (method: line['method'].toString(), amount: DecimalValue.parse(line['amount'] ?? '0'))];
-  final paid = [for (final line in lines) if (line.method != 'credit') line];
+  final paid = [
+    for (final line in lines)
+      if (line.method != 'credit') line,
+  ];
   final collected = paid.fold(DecimalValue.zero, (sum, line) => sum + line.amount);
   final credit = lines.where((line) => line.method == 'credit').fold(DecimalValue.zero, (sum, line) => sum + line.amount);
   final outcome = stop.outcomeStatus ?? 'delivered';

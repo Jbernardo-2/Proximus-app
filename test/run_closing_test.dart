@@ -11,6 +11,7 @@ import 'package:proximus_app/features/reparto/data/delivery_repository.dart';
 import 'package:proximus_app/features/reparto/data/run_closing.dart';
 import 'package:proximus_app/features/reparto/documents/run_closing_pdf.dart';
 import 'package:proximus_app/features/reparto/presentation/run_closing_screen.dart';
+import 'package:proximus_app/features/reparto/presentation/truck_load_screen.dart';
 import 'package:proximus_app/sync/sync_manifest.dart';
 
 import 'delivery_run_test.dart' show MemorySecureStore, runJson, stopJson;
@@ -96,6 +97,8 @@ List<OutboxData> outbox() => [
 ];
 
 void main() {
+  truckLoadTests();
+
   test('the closing counts every way money came in, the credit, and what goes back to the warehouse', () {
     final rows = outbox();
     final run = mergeDeliveryRuns(records: [closingRun()], outbox: rows, customers: const [], pulledAt: today.subtract(const Duration(hours: 1))).single;
@@ -164,5 +167,18 @@ void main() {
       final bytes = await buildRunClosingPdf(run: run, closing: RunClosing.of(run, rows, now: today), driver: 'Repartidor', methodLabels: const {'cash': 'Efectivo'}, format: format);
       expect(utf8.decode(bytes.sublist(0, 5), allowMalformed: true), '%PDF-');
     }
+  });
+}
+
+void truckLoadTests() {
+  test('the truck load adds every order up by product and shows what should still be on board', () {
+    final rows = outbox();
+    final run = mergeDeliveryRuns(records: [closingRun()], outbox: rows, customers: const [], pulledAt: null).single;
+    final rice = truckLoad(run).single;
+
+    expect(rice.product, 'Arroz 1 lb');
+    expect(rice.loaded, d('12'), reason: '4 stops x 3 loaded');
+    expect(rice.delivered, d('2'), reason: 'only stop 2 recorded what it delivered');
+    expect(rice.loaded - rice.delivered - rice.missing, d('10'));
   });
 }

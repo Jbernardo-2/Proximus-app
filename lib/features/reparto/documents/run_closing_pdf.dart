@@ -28,7 +28,12 @@ Future<Uint8List> buildRunClosingPdf({
 
   pw.Widget row(String label, String value, {pw.TextStyle? style}) => pw.Padding(
     padding: const pw.EdgeInsets.symmetric(vertical: 1.5),
-    child: pw.Row(children: [pw.Expanded(child: pw.Text(label, style: style ?? normal)), pw.Text(value, style: style ?? normal)]),
+    child: pw.Row(
+      children: [
+        pw.Expanded(child: pw.Text(label, style: style ?? normal)),
+        pw.Text(value, style: style ?? normal),
+      ],
+    ),
   );
   String label(String method) => methodLabels[method] ?? method;
 
@@ -59,24 +64,39 @@ Future<Uint8List> buildRunClosingPdf({
       for (final item in closing.returns)
         pw.Padding(
           padding: const pw.EdgeInsets.symmetric(vertical: 1.5),
-          child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
-            pw.Text('${item.product} · ${item.presentation}', style: normal),
-            pw.Text(
-              [
-                if (!item.returned.isZero) 'devuelto ${item.returned}',
-                if (!item.damaged.isZero) 'dañado ${item.damaged}',
-                if (!item.missing.isZero) 'faltó ${item.missing}',
-              ].join(' · '),
-              style: small,
-            ),
-          ]),
+          child: pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              pw.Text('${item.product} · ${item.presentation}', style: normal),
+              pw.Text(
+                [if (!item.returned.isZero) 'devuelto ${item.returned}', if (!item.damaged.isZero) 'dañado ${item.damaged}', if (!item.missing.isZero) 'faltó ${item.missing}'].join(' · '),
+                style: small,
+              ),
+            ],
+          ),
         ),
     ],
     pw.SizedBox(height: 22),
-    pw.Row(children: [
-      pw.Expanded(child: pw.Column(children: [pw.Text('______________', style: small), pw.Text('Repartidor', style: small)])),
-      pw.Expanded(child: pw.Column(children: [pw.Text('______________', style: small), pw.Text('Supervisor', style: small)])),
-    ]),
+    pw.Row(
+      children: [
+        pw.Expanded(
+          child: pw.Column(
+            children: [
+              pw.Text('______________', style: small),
+              pw.Text('Repartidor', style: small),
+            ],
+          ),
+        ),
+        pw.Expanded(
+          child: pw.Column(
+            children: [
+              pw.Text('______________', style: small),
+              pw.Text('Supervisor', style: small),
+            ],
+          ),
+        ),
+      ],
+    ),
     pw.SizedBox(height: 6),
     pw.Center(child: pw.Text('Conteo del repartidor; la liquidación se hace en la web.', style: small)),
   ];
@@ -88,7 +108,12 @@ Future<Uint8List> buildRunClosingPdf({
       margin: pw.EdgeInsets.all(ticket ? 8 : 48),
       build: (_) => ticket
           ? pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.stretch, children: content)
-          : pw.Center(child: pw.Container(width: 340, child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.stretch, mainAxisSize: pw.MainAxisSize.min, children: content))),
+          : pw.Center(
+              child: pw.Container(
+                width: 340,
+                child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.stretch, mainAxisSize: pw.MainAxisSize.min, children: content),
+              ),
+            ),
     ),
   );
   return document.save();

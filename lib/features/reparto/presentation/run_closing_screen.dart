@@ -27,7 +27,10 @@ class RunClosingScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final run = ref.watch(deliveryRunProvider(runId));
     if (run == null) {
-      return Scaffold(appBar: AppBar(title: const Text('Cierre de jornada')), body: const Center(child: Text('Esta jornada ya no está en el teléfono.')));
+      return Scaffold(
+        appBar: AppBar(title: const Text('Cierre de jornada')),
+        body: const Center(child: Text('Esta jornada ya no está en el teléfono.')),
+      );
     }
     final closing = RunClosing.of(run, ref.watch(outboxRowsProvider).value ?? const []);
     final manifest = ref.watch(manifestProvider).value;
@@ -59,43 +62,55 @@ class RunClosingScreen extends ConsumerWidget {
           Card(
             child: Padding(
               padding: const EdgeInsets.all(18),
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                const Text('Efectivo a entregar', style: TextStyle(color: AppColors.muted)),
-                FittedBox(fit: BoxFit.scaleDown, alignment: Alignment.centerLeft, child: Text(money(closing.cash), style: const TextStyle(fontSize: 44, fontWeight: FontWeight.w800, height: 1.1))),
-                const SizedBox(height: 4),
-                Text('Total cobrado ${money(closing.collected)} · Crédito ${money(closing.credit)}', style: const TextStyle(color: AppColors.muted)),
-              ]),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Efectivo a entregar', style: TextStyle(color: AppColors.muted)),
+                  FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.centerLeft,
+                    child: Text(money(closing.cash), style: const TextStyle(fontSize: 44, fontWeight: FontWeight.w800, height: 1.1)),
+                  ),
+                  const SizedBox(height: 4),
+                  Text('Total cobrado ${money(closing.collected)} · Crédito ${money(closing.credit)}', style: const TextStyle(color: AppColors.muted)),
+                ],
+              ),
             ),
           ),
           const SizedBox(height: 16),
-          _Section(title: 'Cobrado por forma de pago', children: [
-            if (closing.byMethod.isEmpty) const _Line(label: 'Sin cobros todavía', value: ''),
-            for (final entry in closing.byMethod.entries) _Line(label: labels[entry.key] ?? entry.key, value: money(entry.value)),
-            if (closing.accountPaymentCount > 0)
-              _Line(
-                label: 'Incluye ${closing.accountPaymentCount} ${closing.accountPaymentCount == 1 ? 'abono' : 'abonos'} a cuenta',
-                value: money(closing.accountPayments.values.fold(DecimalValue.zero, (sum, amount) => sum + amount)),
-                muted: true,
-              ),
-          ]),
-          _Section(title: 'Paradas (${run.stops.length})', children: [
-            _Line(label: 'Entregadas', value: '${closing.delivered}'),
-            _Line(label: 'Entrega parcial', value: '${closing.partial}'),
-            _Line(label: 'No entregadas', value: '${closing.notDelivered}'),
-            if (closing.open > 0) _Line(label: 'Sin terminar', value: '${closing.open}', warn: true),
-          ]),
-          if (closing.returns.isNotEmpty)
-            _Section(title: 'Mercadería que regresa a bodega', children: [
-              for (final item in closing.returns)
+          _Section(
+            title: 'Cobrado por forma de pago',
+            children: [
+              if (closing.byMethod.isEmpty) const _Line(label: 'Sin cobros todavía', value: ''),
+              for (final entry in closing.byMethod.entries) _Line(label: labels[entry.key] ?? entry.key, value: money(entry.value)),
+              if (closing.accountPaymentCount > 0)
                 _Line(
-                  label: '${item.product} · ${item.presentation}',
-                  value: [
-                    if (!item.returned.isZero) 'Dev. ${item.returned}',
-                    if (!item.damaged.isZero) 'Dañ. ${item.damaged}',
-                    if (!item.missing.isZero) 'Faltó ${item.missing}',
-                  ].join(' · '),
+                  label: 'Incluye ${closing.accountPaymentCount} ${closing.accountPaymentCount == 1 ? 'abono' : 'abonos'} a cuenta',
+                  value: money(closing.accountPayments.values.fold(DecimalValue.zero, (sum, amount) => sum + amount)),
+                  muted: true,
                 ),
-            ]),
+            ],
+          ),
+          _Section(
+            title: 'Paradas (${run.stops.length})',
+            children: [
+              _Line(label: 'Entregadas', value: '${closing.delivered}'),
+              _Line(label: 'Entrega parcial', value: '${closing.partial}'),
+              _Line(label: 'No entregadas', value: '${closing.notDelivered}'),
+              if (closing.open > 0) _Line(label: 'Sin terminar', value: '${closing.open}', warn: true),
+            ],
+          ),
+          if (closing.returns.isNotEmpty)
+            _Section(
+              title: 'Mercadería que regresa a bodega',
+              children: [
+                for (final item in closing.returns)
+                  _Line(
+                    label: '${item.product} · ${item.presentation}',
+                    value: [if (!item.returned.isZero) 'Dev. ${item.returned}', if (!item.damaged.isZero) 'Dañ. ${item.damaged}', if (!item.missing.isZero) 'Faltó ${item.missing}'].join(' · '),
+                  ),
+              ],
+            ),
           const SizedBox(height: 8),
           FilledButton.icon(onPressed: () => output(ReceiptFormat.ticket), icon: const Icon(Icons.receipt_long), label: const Text('Imprimir ticket 80 mm')),
           const SizedBox(height: 8),
@@ -113,7 +128,11 @@ class RunClosingScreen extends ConsumerWidget {
             label: const Text('Compartir'),
           ),
           const SizedBox(height: 12),
-          const Text('Es tu conteo de la jornada. El supervisor hace la liquidación en la web.', textAlign: TextAlign.center, style: TextStyle(fontSize: 12, color: AppColors.muted)),
+          const Text(
+            'Es tu conteo de la jornada. El supervisor hace la liquidación en la web.',
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 12, color: AppColors.muted),
+          ),
         ],
       ),
     );
@@ -137,11 +156,21 @@ class _Warning extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.fromLTRB(12, 12, 4, 4),
       decoration: BoxDecoration(color: AppColors.amber.withValues(alpha: 0.10), borderRadius: BorderRadius.circular(12)),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text('Cierre preliminar: ${reasons.join(', ')}.', style: const TextStyle(color: Color(0xFF8A5A00), fontWeight: FontWeight.w600)),
-        if (closing.unsent > 0 || closing.rejected > 0) Align(alignment: Alignment.centerRight, child: TextButton(onPressed: onOpenActivity, child: const Text('Ver en Actividad'))),
-        if (closing.unsent == 0 && closing.rejected == 0) const SizedBox(height: 8),
-      ]),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Cierre preliminar: ${reasons.join(', ')}.',
+            style: const TextStyle(color: Color(0xFF8A5A00), fontWeight: FontWeight.w600),
+          ),
+          if (closing.unsent > 0 || closing.rejected > 0)
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton(onPressed: onOpenActivity, child: const Text('Ver en Actividad')),
+            ),
+          if (closing.unsent == 0 && closing.rejected == 0) const SizedBox(height: 8),
+        ],
+      ),
     );
   }
 }
@@ -155,11 +184,19 @@ class _Section extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Padding(
     padding: const EdgeInsets.only(bottom: 16),
-    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
-      const SizedBox(height: 8),
-      Card(child: Padding(padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8), child: Column(children: children))),
-    ]),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
+        const SizedBox(height: 8),
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+            child: Column(children: children),
+          ),
+        ),
+      ],
+    ),
   );
 }
 
@@ -176,11 +213,19 @@ class _Line extends StatelessWidget {
     final color = warn ? AppColors.amber : (muted ? AppColors.muted : AppColors.ink);
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6),
-      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Expanded(child: Text(label, style: TextStyle(color: color))),
-        const SizedBox(width: 8),
-        Text(value, style: TextStyle(fontWeight: FontWeight.w700, color: color)),
-      ]),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            child: Text(label, style: TextStyle(color: color)),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            value,
+            style: TextStyle(fontWeight: FontWeight.w700, color: color),
+          ),
+        ],
+      ),
     );
   }
 }

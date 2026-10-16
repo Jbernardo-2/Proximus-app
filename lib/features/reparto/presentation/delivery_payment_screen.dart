@@ -41,7 +41,11 @@ class _DeliveryPaymentScreenState extends ConsumerState<DeliveryPaymentScreen> {
     try {
       final invoice = await ref.read(deliveryActionsProvider).recordPayment(run, stop, _draft!, location: _location);
       if (!mounted) return;
-      Navigator.of(context).pushReplacement(MaterialPageRoute<void>(builder: (_) => DeliveryInvoiceScreen(invoice: invoice, justIssued: true)));
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute<void>(
+          builder: (_) => DeliveryInvoiceScreen(invoice: invoice, justIssued: true, doneLocation: '/deliveries/${run.id}'),
+        ),
+      );
     } catch (error, stack) {
       debugPrint('No se pudo registrar el cobro: $error\n$stack');
       if (!mounted) return;
@@ -55,7 +59,10 @@ class _DeliveryPaymentScreenState extends ConsumerState<DeliveryPaymentScreen> {
     final run = ref.watch(deliveryRunProvider(widget.runId));
     final stop = run?.stops.where((item) => item.id == widget.stopId).firstOrNull;
     if (run == null || stop == null) {
-      return Scaffold(appBar: AppBar(title: const Text('Cobrar')), body: const Center(child: Text('Esta parada ya no está en el teléfono.')));
+      return Scaffold(
+        appBar: AppBar(title: const Text('Cobrar')),
+        body: const Center(child: Text('Esta parada ya no está en el teléfono.')),
+      );
     }
     final draft = _draft ??= SettlementDraft.start(stop.balanceDue, credit: stop.isCredit);
     final manifest = ref.watch(manifestProvider).value;
@@ -81,11 +88,18 @@ class _DeliveryPaymentScreenState extends ConsumerState<DeliveryPaymentScreen> {
           Card(
             child: Padding(
               padding: const EdgeInsets.all(16),
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                const Text('Total entregado', style: TextStyle(color: AppColors.muted)),
-                Text(money(draft.total), style: const TextStyle(fontSize: 30, fontWeight: FontWeight.w800)),
-                if (stop.isCredit) const Text('Pedido a crédito', style: TextStyle(color: Color(0xFF2F6FD0), fontWeight: FontWeight.w600)),
-              ]),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Total entregado', style: TextStyle(color: AppColors.muted)),
+                  Text(money(draft.total), style: const TextStyle(fontSize: 30, fontWeight: FontWeight.w800)),
+                  if (stop.isCredit)
+                    const Text(
+                      'Pedido a crédito',
+                      style: TextStyle(color: Color(0xFF2F6FD0), fontWeight: FontWeight.w600),
+                    ),
+                ],
+              ),
             ),
           ),
           const SizedBox(height: 16),
@@ -121,18 +135,28 @@ class _DeliveryPaymentScreenState extends ConsumerState<DeliveryPaymentScreen> {
       bottomNavigationBar: SafeArea(
         child: Padding(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            SplitRemainingBar(total: draft.total, lines: lines),
-            if (problems.isNotEmpty)
-              Padding(padding: const EdgeInsets.only(top: 8), child: Text(problems.first, style: const TextStyle(color: AppColors.amber, fontWeight: FontWeight.w600))),
-            const SizedBox(height: 8),
-            FilledButton(
-              onPressed: !complete || problems.isNotEmpty || _saving ? null : () => _save(run, stop),
-              child: _saving
-                  ? const SizedBox.square(dimension: 20, child: CircularProgressIndicator(strokeWidth: 2))
-                  : Text(draft.collected.isZero ? 'Registrar a crédito' : 'Cobrar ${money(draft.collected)} y facturar'),
-            ),
-          ]),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              SplitRemainingBar(total: draft.total, lines: lines),
+              if (problems.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Text(
+                    problems.first,
+                    style: const TextStyle(color: AppColors.amber, fontWeight: FontWeight.w600),
+                  ),
+                ),
+              const SizedBox(height: 8),
+              FilledButton(
+                onPressed: !complete || problems.isNotEmpty || _saving ? null : () => _save(run, stop),
+                child: _saving
+                    ? const SizedBox.square(dimension: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                    : Text(draft.collected.isZero ? 'Registrar a crédito' : 'Cobrar ${money(draft.collected)} y facturar'),
+              ),
+            ],
+          ),
         ),
       ),
     );
