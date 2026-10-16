@@ -34,7 +34,8 @@ const appModules = [
 
 bool _routeActivity(SyncManifest manifest, Session session) => manifest.hasResource('route_activity');
 
-bool _customers(SyncManifest manifest, Session session) => manifest.hasResource('customers');
+/// For whoever takes orders; the driver sees their customers inside the run.
+bool _customers(SyncManifest manifest, Session session) => manifest.hasResource('customers') && manifest.supports('order.create');
 
 bool _deliveries(SyncManifest manifest, Session session) =>
     manifest.hasResource('delivery_runs') && manifest.supports('delivery.outcome');

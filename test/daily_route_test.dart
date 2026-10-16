@@ -150,6 +150,17 @@ void main() {
 
     expect(modulesFor(manifest, session(const ['orders:manage'])).map((m) => m.label), ['Ruta del día', 'Clientes']);
     expect(modulesFor(manifest, session(const ['reports:view'])).map((m) => m.label), contains('Reportes'));
+
+    final driver = SyncManifest.fromJson({
+      'resources': {
+        'delivery_runs': {'mode': 'full', 'available': true},
+        'customers': {'mode': 'full', 'available': true},
+        'route_activity': {'mode': 'full', 'available': false},
+      },
+      'operations': ['delivery.depart', 'delivery.outcome', 'delivery.payment'],
+    });
+    expect(modulesFor(driver, session(const ['deliveries:execute'])).map((m) => m.label), ['Mi jornada'],
+        reason: 'the driver gets the customers of the run, not the order-taking customer list');
   });
 
   testWidgets('the daily route fits a small phone and shows the day at a glance', (tester) async {
