@@ -32,6 +32,29 @@ abstract final class ExternalApps {
     return _open('geo:0,0?q=${Uri.encodeComponent(label)}');
   }
 
+  /// Whether Android lets the app use the network with the screen off and power saving
+  /// on. Null when it cannot tell (tests, other platforms).
+  static Future<bool?> isBackgroundAllowed() async {
+    try {
+      return await _channel.invokeMethod<bool>('isBackgroundAllowed');
+    } on PlatformException {
+      return null;
+    } on MissingPluginException {
+      return null;
+    }
+  }
+
+  /// Asks the user to let Proximus work without battery restrictions.
+  static Future<bool> requestBackground() async {
+    try {
+      return await _channel.invokeMethod<bool>('requestBackground') ?? false;
+    } on PlatformException {
+      return false;
+    } on MissingPluginException {
+      return false;
+    }
+  }
+
   static String _digits(String value, {bool keepPlus = false}) =>
       value.replaceAll(RegExp(keepPlus ? r'[^\d+]' : r'\D'), '');
 }

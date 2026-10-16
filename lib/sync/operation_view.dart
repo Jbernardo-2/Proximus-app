@@ -23,6 +23,7 @@ const operationLabels = {
   'order.create': 'Pedido',
   'visit.no_sale': 'Visita sin venta',
   'customer.payment': 'Abono',
+  'delivery.depart': 'Salida de jornada',
   'delivery.outcome': 'Resultado de entrega',
   'delivery.payment': 'Cobro de entrega',
 };

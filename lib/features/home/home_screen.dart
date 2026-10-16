@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../app/modules.dart';
 import '../../app/providers.dart';
 import '../../app/theme.dart';
+import '../session/background_banner.dart';
 import '../session/session_banner.dart';
 import '../sync/sync_screen.dart';
 import '../sync/sync_summary_card.dart';
@@ -46,6 +47,7 @@ class HomeScreen extends ConsumerWidget {
         padding: const EdgeInsets.all(16),
         children: [
           const SessionBanner(),
+          const BackgroundBanner(),
           const ClockWarning(),
           SyncSummaryCard(onTap: () => context.go('/sync')),
           const SizedBox(height: 24),
