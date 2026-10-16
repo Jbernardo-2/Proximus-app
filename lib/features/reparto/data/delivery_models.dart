@@ -211,6 +211,10 @@ final class LocalDeliveryRun {
         _ => status,
       };
 
+  /// Still needs the driver: not out yet, or stops to deliver or collect. A run with
+  /// every stop finished only waits for the supervisor to settle it.
+  bool get needsDriver => !hasLeft || pendingStops.isNotEmpty;
+
   List<LocalDeliveryStop> get pendingStops => [for (final stop in stops) if (stop.progress != StopProgress.done) stop];
   List<LocalDeliveryStop> get doneStops => [for (final stop in stops) if (stop.progress == StopProgress.done) stop];
   DecimalValue get loadedTotal => stops.fold(DecimalValue.zero, (total, stop) => total + stop.loadedTotal);

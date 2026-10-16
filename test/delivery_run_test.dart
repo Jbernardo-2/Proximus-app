@@ -124,10 +124,10 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(tester.takeException(), isNull);
-    expect(find.text('Jornada RUT-2026-000013'), findsOneWidget);
+    expect(find.text('RUT-2026-000013'), findsOneWidget);
     expect(find.text('Cargada, sin salir'), findsOneWidget);
     expect(find.textContaining('A 1 parada le falta mercadería'), findsOneWidget);
-    expect(find.text('Entregas terminadas (1)'), findsOneWidget);
+    expect(find.text('1 de 4 entregas terminadas'), findsOneWidget);
     expect(find.byType(DeliveryStopCard), findsWidgets);
 
     await tester.tap(find.text('Salir a ruta'));
@@ -150,6 +150,64 @@ void main() {
       container.dispose();
       await db.close();
     });
+  });
+
+  test('only runs that need the driver show, today first and then the newest', () {
+    Map<String, dynamic> run(String id, String date, {String status = 'in_transit', bool finished = false}) => {
+          ...runJson(status: status),
+          'id': id,
+          'run_number': 'RUT-$id',
+          'scheduled_date': date,
+          'orders': [stopJson(1, status: finished ? 'delivered' : 'loaded')],
+        };
+    final runs = mergeDeliveryRuns(
+      records: [
+        run('viejo', '2026-10-12'),
+        run('terminado', '2026-10-10', status: 'awaiting_settlement', finished: true),
+        run('entregado-sin-liquidar', '2026-10-14', finished: true),
+        run('ayer', '2026-10-14'),
+        run('hoy', '2026-10-15', status: 'loaded'),
+      ],
+      outbox: const [],
+      customers: const [],
+      pulledAt: null,
+    );
+
+    expect(runsToWork(runs, now: DateTime(2026, 10, 15, 9)).map((run) => run.id), ['hoy', 'ayer', 'viejo']);
+  });
+
+  testWidgets('with several runs the driver picks one; finished ones only leave a note', (tester) async {
+    tester.view.physicalSize = const Size(384 * 3, 820 * 3);
+    tester.view.devicePixelRatio = 3;
+    tester.platformDispatcher.textScaleFactorTestValue = 1.1;
+    addTearDown(tester.view.reset);
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+    final today = DateTime.now();
+    String day(int back) => today.subtract(Duration(days: back)).toIso8601String().substring(0, 10);
+    await tester.pumpWidget(ProviderScope(
+      overrides: [
+        outboxRowsProvider.overrideWith((ref) => Stream.value(const <OutboxData>[])),
+        syncStateProvider('pulled_at:delivery_runs').overrideWith((ref) => Stream.value(null)),
+        secureStoreProvider.overrideWithValue(MemorySecureStore(null)),
+        apiProvider.overrideWithValue(null),
+        localRecordsProvider('delivery_runs').overrideWith((ref) => Stream.value([
+              {...runJson(status: 'in_transit'), 'id': 'a', 'run_number': 'RUT-VIEJA', 'scheduled_date': day(3)},
+              {...runJson(), 'id': 'b', 'run_number': 'RUT-HOY', 'scheduled_date': day(0)},
+              {...runJson(status: 'awaiting_settlement'), 'id': 'c', 'run_number': 'RUT-LISTA', 'scheduled_date': day(5), 'orders': [stopJson(1, status: 'delivered')]},
+            ])),
+        localRecordsProvider('customers').overrideWith((ref) => Stream.value(const [])),
+      ],
+      child: const MaterialApp(home: DeliveryRunScreen()),
+    ));
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    expect(find.text('Tienes 2 jornadas sin terminar'), findsOneWidget);
+    expect(tester.getTopLeft(find.text('Jornada RUT-HOY')).dy, lessThan(tester.getTopLeft(find.text('Jornada RUT-VIEJA')).dy));
+    expect(find.text('Jornada RUT-LISTA'), findsNothing);
+    expect(find.text('1 jornada terminada espera la liquidación del supervisor.'), findsOneWidget);
+    expect(find.byType(DeliveryStopCard), findsNothing, reason: 'stops of different runs are never mixed');
+
   });
 
   test('a stop is finished only when delivered and paid, partially delivered or not delivered', () {

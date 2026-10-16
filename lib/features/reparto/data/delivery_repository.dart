@@ -34,7 +34,21 @@ List<LocalDeliveryRun> mergeDeliveryRuns({
         : run.copyWith(departurePending: run.status == 'loaded');
   }
 
-  return runs.values.toList()..sort((a, b) => (a.scheduledDate ?? DateTime(9999)).compareTo(b.scheduledDate ?? DateTime(9999)));
+  return runs.values.toList();
+}
+
+/// The runs the driver still has to work on, in the order they matter: today's first,
+/// then the newest. Finished runs (waiting to be settled) are left out.
+List<LocalDeliveryRun> runsToWork(List<LocalDeliveryRun> runs, {DateTime? now}) {
+  final today = now ?? DateTime.now();
+  bool isToday(LocalDeliveryRun run) =>
+      run.scheduledDate != null && run.scheduledDate!.year == today.year && run.scheduledDate!.month == today.month && run.scheduledDate!.day == today.day;
+
+  return [for (final run in runs) if (run.needsDriver) run]
+    ..sort((a, b) {
+      if (isToday(a) != isToday(b)) return isToday(a) ? -1 : 1;
+      return (b.scheduledDate ?? DateTime(0)).compareTo(a.scheduledDate ?? DateTime(0));
+    });
 }
 
 /// Payloads of the driver's operations (contract section 4).

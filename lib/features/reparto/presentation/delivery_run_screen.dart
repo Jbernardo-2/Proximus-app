@@ -11,72 +11,185 @@ import '../../preventa/data/preventa_models.dart' show LocalOperationState;
 import '../../preventa/presentation/daily_route_screen.dart' show StatusChip;
 import '../application/delivery_providers.dart';
 import '../data/delivery_models.dart';
+import '../data/delivery_repository.dart';
 
 final _day = DateFormat("EEEE d 'de' MMMM", 'es');
 
-/// The driver's day: the loaded run, leaving the warehouse and the stops still to do.
+String _dayLabel(DateTime? date) => date == null ? '' : toBeginningOfSentenceCase(_day.format(date));
+
+/// The driver's work. Only runs that still need them show: with one, it opens
+/// straight away; with several, a short list to pick from, today's first.
 class DeliveryRunScreen extends ConsumerWidget {
   const DeliveryRunScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final runs = ref.watch(deliveryRunsProvider);
-    final running = ref.watch(syncProvider.select((status) => status.running));
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Mi jornada'),
-        actions: [
-          IconButton(
-            tooltip: 'Sincronizar',
-            onPressed: running ? null : () => ref.read(syncProvider.notifier).sync(),
-            icon: running ? const SizedBox.square(dimension: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.sync),
-          ),
-        ],
+    return runs.when(
+      loading: () => const Scaffold(body: Center(child: CircularProgressIndicator())),
+      error: (error, _) => Scaffold(
+        appBar: AppBar(title: const Text('Mi jornada')),
+        body: _Message(icon: Icons.sync_problem, title: 'No se pudo leer la jornada guardada', detail: error.toString()),
       ),
-      body: runs.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (error, _) => _Message(icon: Icons.sync_problem, title: 'No se pudo leer la jornada guardada', detail: error.toString()),
-        data: (runs) => RefreshIndicator(
-          onRefresh: () => ref.read(syncProvider.notifier).sync(),
-          child: runs.isEmpty
-              ? ListView(children: const [
-                  SizedBox(height: 120),
-                  _Message(
-                    icon: Icons.local_shipping_outlined,
-                    title: 'No tienes jornadas cargadas',
-                    detail: 'Cuando la bodega cargue tu camión, desliza hacia abajo para sincronizar.',
-                  ),
-                ])
-              : ListView(
-                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
-                  children: [
-                    for (final run in runs) ...[
-                      _RunSummary(run: run),
-                      const SizedBox(height: 12),
-                      if (!run.hasLeft) ...[_DepartButton(run: run), const SizedBox(height: 12)],
-                      OutlinedButton.icon(
-                        style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(46)),
-                        onPressed: run.doneStops.isEmpty ? null : () => context.push('/deliveries/${run.id}/done'),
-                        icon: const Icon(Icons.task_alt),
-                        label: Text('Entregas terminadas (${run.doneStops.length})'),
-                      ),
-                      const SizedBox(height: 16),
-                      if (run.pendingStops.isEmpty)
-                        const _Message(
-                          icon: Icons.emoji_events_outlined,
-                          title: 'Terminaste todas las paradas',
-                          detail: 'Revisa en "Entregas terminadas" que todo quede confirmado y entrega el efectivo al supervisor.',
-                        ),
-                      for (final stop in run.pendingStops) DeliveryStopCard(stop: stop),
-                      const SizedBox(height: 24),
-                    ],
-                  ],
-                ),
+      data: (runs) {
+        final toWork = runsToWork(runs);
+        final waitingSettlement = runs.length - toWork.length;
+        if (toWork.length == 1) return _RunScaffold(run: toWork.single, waitingSettlement: waitingSettlement);
+
+        return Scaffold(
+          appBar: AppBar(title: const Text('Mi jornada'), actions: const [_SyncButton()]),
+          body: RefreshIndicator(
+            onRefresh: () => ref.read(syncProvider.notifier).sync(),
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+              children: [
+                if (toWork.isEmpty)
+                  const Padding(
+                    padding: EdgeInsets.only(top: 80),
+                    child: _Message(
+                      icon: Icons.local_shipping_outlined,
+                      title: 'No tienes jornadas por entregar',
+                      detail: 'Cuando la bodega cargue tu camión, desliza hacia abajo para sincronizar.',
+                    ),
+                  )
+                else ...[
+                  Text('Tienes ${toWork.length} jornadas sin terminar', style: const TextStyle(color: AppColors.muted)),
+                  const SizedBox(height: 8),
+                  for (final run in toWork) _RunTile(run: run),
+                ],
+                if (waitingSettlement > 0) _SettlementNote(count: waitingSettlement),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// One run opened from the list.
+class DeliveryRunDetailScreen extends ConsumerWidget {
+  const DeliveryRunDetailScreen({super.key, required this.runId});
+
+  final String runId;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final run = ref.watch(deliveryRunProvider(runId));
+    if (run == null) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Jornada')),
+        body: const _Message(icon: Icons.local_shipping_outlined, title: 'Esta jornada ya no está en el teléfono', detail: 'Puede que el supervisor ya la haya liquidado.'),
+      );
+    }
+    return _RunScaffold(run: run, title: 'Jornada ${run.runNumber}');
+  }
+}
+
+class _RunScaffold extends ConsumerWidget {
+  const _RunScaffold({required this.run, this.title = 'Mi jornada', this.waitingSettlement = 0});
+
+  final LocalDeliveryRun run;
+  final String title;
+  final int waitingSettlement;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final pending = run.pendingStops;
+    return Scaffold(
+      appBar: AppBar(title: Text(title), actions: const [_SyncButton()]),
+      body: RefreshIndicator(
+        onRefresh: () => ref.read(syncProvider.notifier).sync(),
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+          children: [
+            _RunSummary(run: run),
+            const SizedBox(height: 12),
+            if (!run.hasLeft) ...[_DepartButton(run: run), const SizedBox(height: 16)],
+            if (pending.isEmpty)
+              const _Message(
+                icon: Icons.emoji_events_outlined,
+                title: 'Terminaste todas las paradas',
+                detail: 'Entrega el efectivo y la mercadería devuelta al supervisor.',
+              )
+            else ...[
+              Text(run.hasLeft ? 'Por entregar (${pending.length})' : 'Paradas (${pending.length})', style: const TextStyle(fontWeight: FontWeight.w700)),
+              const SizedBox(height: 8),
+              for (final stop in pending) DeliveryStopCard(stop: stop),
+            ],
+            if (waitingSettlement > 0) _SettlementNote(count: waitingSettlement),
+          ],
         ),
       ),
     );
   }
+}
+
+class _SyncButton extends ConsumerWidget {
+  const _SyncButton();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final running = ref.watch(syncProvider.select((status) => status.running));
+    return IconButton(
+      tooltip: 'Sincronizar',
+      onPressed: running ? null : () => ref.read(syncProvider.notifier).sync(),
+      icon: running ? const SizedBox.square(dimension: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.sync),
+    );
+  }
+}
+
+/// A run in the list: enough to recognise it and see what is left.
+class _RunTile extends StatelessWidget {
+  const _RunTile({required this.run});
+
+  final LocalDeliveryRun run;
+
+  @override
+  Widget build(BuildContext context) {
+    final pending = run.pendingStops.length;
+    return Card(
+      margin: const EdgeInsets.only(bottom: 10),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: () => context.push('/deliveries/${run.id}'),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 14, 8, 14),
+          child: Row(children: [
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text('Jornada ${run.runNumber}', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
+                Text(_dayLabel(run.scheduledDate), style: const TextStyle(color: AppColors.muted)),
+                const SizedBox(height: 6),
+                Wrap(spacing: 8, runSpacing: 4, crossAxisAlignment: WrapCrossAlignment.center, children: [
+                  StatusChip(text: run.statusLabel, color: run.hasLeft ? AppColors.brand : AppColors.amber),
+                  Text(run.hasLeft ? 'Faltan $pending de ${run.stops.length} paradas' : '${run.stops.length} paradas', style: const TextStyle(fontWeight: FontWeight.w600)),
+                ]),
+              ]),
+            ),
+            const Icon(Icons.chevron_right, color: AppColors.muted),
+          ]),
+        ),
+      ),
+    );
+  }
+}
+
+class _SettlementNote extends StatelessWidget {
+  const _SettlementNote({required this.count});
+
+  final int count;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.only(top: 16),
+        child: Text(
+          count == 1 ? '1 jornada terminada espera la liquidación del supervisor.' : '$count jornadas terminadas esperan la liquidación del supervisor.',
+          textAlign: TextAlign.center,
+          style: const TextStyle(fontSize: 12, color: AppColors.muted),
+        ),
+      );
 }
 
 class _RunSummary extends StatelessWidget {
@@ -87,56 +200,56 @@ class _RunSummary extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final shortStops = run.stops.where((stop) => stop.hasShortItems).length;
+    final done = run.doneStops.length;
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Expanded(child: Text('Jornada ${run.runNumber}', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800))),
-            StatusChip(
-              text: run.statusLabel,
-              color: run.hasLeft ? AppColors.brand : AppColors.amber,
-              outlined: run.departurePending,
-            ),
-          ]),
+          Text(run.runNumber, style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
           Text(
-            [
-              if (run.scheduledDate != null) toBeginningOfSentenceCase(_day.format(run.scheduledDate!)),
-              if (run.vehicleCode != null) 'Camión ${run.vehicleCode}${run.licensePlate == null ? '' : ' (${run.licensePlate})'}',
-            ].join(' · '),
+            [_dayLabel(run.scheduledDate), if (run.vehicleCode != null) 'Camión ${run.vehicleCode}'].where((part) => part.isNotEmpty).join(' · '),
             style: const TextStyle(color: AppColors.muted),
           ),
+          const SizedBox(height: 8),
+          StatusChip(text: run.statusLabel, color: run.hasLeft ? AppColors.brand : AppColors.amber, outlined: run.departurePending),
           const SizedBox(height: 14),
+          ClipRRect(borderRadius: BorderRadius.circular(8), child: LinearProgressIndicator(value: run.progress, minHeight: 8)),
+          const SizedBox(height: 6),
           Row(children: [
-            Expanded(child: ClipRRect(borderRadius: BorderRadius.circular(8), child: LinearProgressIndicator(value: run.progress, minHeight: 8))),
-            const SizedBox(width: 12),
-            Text('${run.doneStops.length}/${run.stops.length}', style: const TextStyle(fontWeight: FontWeight.w700)),
+            Expanded(child: Text('$done de ${run.stops.length} entregas terminadas', style: const TextStyle(fontWeight: FontWeight.w600))),
+            if (done > 0)
+              TextButton(
+                style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
+                onPressed: () => context.push('/deliveries/${run.id}/done'),
+                child: const Text('Ver'),
+              ),
           ]),
-          const SizedBox(height: 14),
-          Row(children: [
-            _Figure(label: 'Paradas', value: '${run.stops.length}'),
-            _Figure(label: 'Carga', value: money(run.loadedTotal)),
-            _Figure(label: 'Cobrado', value: money(run.collectedTotal), color: AppColors.brand),
-          ]),
-          if (run.departurePending) ...[
-            const SizedBox(height: 10),
-            const Text('Salida guardada en el teléfono; se enviará cuando haya señal.', style: TextStyle(fontSize: 12, color: AppColors.amber)),
-          ],
-          if (run.departureRejection != null) ...[
-            const SizedBox(height: 10),
-            Text(run.departureRejection!, style: const TextStyle(fontSize: 12, color: AppColors.danger)),
-          ],
-          if (!run.hasLeft && shortStops > 0) ...[
-            const SizedBox(height: 10),
-            Text(
+          if (run.hasLeft) Text('Cobrado ${money(run.collectedTotal)} de ${money(run.loadedTotal)}', style: const TextStyle(color: AppColors.muted)),
+          if (run.departurePending) const _Note('Salida guardada en el teléfono; se enviará cuando haya señal.', AppColors.amber),
+          if (run.departureRejection != null) _Note(run.departureRejection!, AppColors.danger),
+          if (!run.hasLeft && shortStops > 0)
+            _Note(
               shortStops == 1 ? 'A 1 parada le falta mercadería: la bodega cargó menos de lo pedido.' : 'A $shortStops paradas les falta mercadería: la bodega cargó menos de lo pedido.',
-              style: const TextStyle(fontSize: 12, color: AppColors.amber),
+              AppColors.amber,
             ),
-          ],
+          const SizedBox(height: 8),
         ]),
       ),
     );
   }
+}
+
+class _Note extends StatelessWidget {
+  const _Note(this.text, this.color);
+
+  final String text;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.only(top: 8),
+        child: Text(text, style: TextStyle(fontSize: 12, color: color)),
+      );
 }
 
 class _DepartButton extends ConsumerStatefulWidget {
@@ -184,7 +297,7 @@ class _DepartButtonState extends ConsumerState<_DepartButton> {
       );
 }
 
-/// A stop of the run in a list: who, what goes, how it is paid and how it stands.
+/// A stop of the run in a list: who, what goes, how it is paid and anything to watch for.
 class DeliveryStopCard extends StatelessWidget {
   const DeliveryStopCard({super.key, required this.stop});
 
@@ -195,21 +308,24 @@ class DeliveryStopCard extends StatelessWidget {
     final customer = stop.customer;
     final phone = customer?.phone ?? customer?.whatsapp;
     final whatsapp = customer?.whatsapp ?? customer?.phone;
-    final (label, color) = switch (stop.progress) {
-      StopProgress.awaitingPayment => ('Falta cobrar', AppColors.amber),
-      StopProgress.done => (stop.statusLabel.isEmpty ? 'Terminada' : stop.statusLabel, AppColors.brand),
-      StopProgress.pending => ('Pendiente', AppColors.muted),
-    };
+    final chips = [
+      if (stop.progress == StopProgress.awaitingPayment) const StatusChip(text: 'Falta cobrar', color: AppColors.amber),
+      if (stop.progress == StopProgress.done) StatusChip(text: stop.statusLabel.isEmpty ? 'Terminada' : stop.statusLabel, color: AppColors.brand),
+      if (stop.isCredit) const StatusChip(text: 'Crédito', color: Color(0xFF2F6FD0), outlined: true),
+      if (stop.hasShortItems && stop.progress == StopProgress.pending) const StatusChip(text: 'Carga incompleta', color: AppColors.amber, outlined: true),
+      if (stop.operationState == LocalOperationState.pending) const StatusChip(text: 'Por enviar', color: AppColors.amber, outlined: true),
+      if (stop.operationState == LocalOperationState.rejected) const StatusChip(text: 'Rechazado', color: AppColors.danger, outlined: true),
+    ];
 
     return Card(
-      margin: const EdgeInsets.only(bottom: 12),
+      margin: const EdgeInsets.only(bottom: 10),
       clipBehavior: Clip.antiAlias,
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(14, 14, 14, 6),
+        padding: const EdgeInsets.fromLTRB(14, 12, 6, 4),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
             CircleAvatar(
-              radius: 16,
+              radius: 15,
               backgroundColor: const Color(0xFFF1F1EF),
               child: Text('${stop.visitOrder}', style: const TextStyle(fontWeight: FontWeight.w700, color: AppColors.ink)),
             ),
@@ -217,43 +333,43 @@ class DeliveryStopCard extends StatelessWidget {
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Text(stop.customerName, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
-                Text(stop.customerAddress, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: AppColors.muted)),
+                Text(stop.customerAddress, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: AppColors.muted)),
+                const SizedBox(height: 4),
+                Text(
+                  '${stop.items.length} ${stop.items.length == 1 ? 'producto' : 'productos'} · ${money(stop.loadedTotal)}',
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
               ]),
             ),
           ]),
-          const SizedBox(height: 10),
-          Wrap(spacing: 8, runSpacing: 6, children: [
-            StatusChip(text: label, color: color),
-            StatusChip(text: stop.isCredit ? 'Crédito' : 'Contado', color: stop.isCredit ? const Color(0xFF2F6FD0) : AppColors.ink, outlined: true),
-            if (stop.hasShortItems) const StatusChip(text: 'Carga incompleta', color: AppColors.amber, outlined: true),
-            if (stop.operationState == LocalOperationState.pending) const StatusChip(text: 'Por enviar', color: AppColors.amber, outlined: true),
-            if (stop.operationState == LocalOperationState.rejected) const StatusChip(text: 'Rechazado', color: AppColors.danger, outlined: true),
-          ]),
-          const SizedBox(height: 8),
-          Text(
-            '${stop.items.length} ${stop.items.length == 1 ? 'producto' : 'productos'} · ${money(stop.loadedTotal)}${stop.orderNumber == null ? '' : ' · ${stop.orderNumber}'}',
-            style: const TextStyle(fontWeight: FontWeight.w600),
-          ),
-          if (stop.rejectionMessage != null) ...[
-            const SizedBox(height: 6),
-            Text(stop.rejectionMessage!, style: const TextStyle(color: AppColors.danger, fontSize: 13)),
+          if (chips.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Padding(padding: const EdgeInsets.only(left: 42), child: Wrap(spacing: 6, runSpacing: 6, children: chips)),
           ],
-          Row(children: [
-            if (phone != null) IconButton(tooltip: 'Llamar', icon: const Icon(Icons.call_outlined), onPressed: () => _open(context, ExternalApps.call(phone))),
-            if (whatsapp != null) IconButton(tooltip: 'WhatsApp', icon: const Icon(Icons.chat_outlined), onPressed: () => _open(context, ExternalApps.whatsapp(whatsapp))),
-            IconButton(
-              tooltip: 'Abrir ubicación',
-              icon: const Icon(Icons.place_outlined),
-              onPressed: () => _open(
-                context,
-                ExternalApps.map(
-                  latitude: customer?.latitude,
-                  longitude: customer?.longitude,
-                  label: customer?.hasLocation ?? false ? stop.customerName : '${stop.customerAddress} ${stop.customerName}',
+          if (stop.rejectionMessage != null)
+            Padding(
+              padding: const EdgeInsets.only(left: 42, top: 6),
+              child: Text(stop.rejectionMessage!, style: const TextStyle(color: AppColors.danger, fontSize: 13)),
+            ),
+          Padding(
+            padding: const EdgeInsets.only(left: 30),
+            child: Row(children: [
+              if (phone != null) IconButton(tooltip: 'Llamar', icon: const Icon(Icons.call_outlined), onPressed: () => _open(context, ExternalApps.call(phone))),
+              if (whatsapp != null) IconButton(tooltip: 'WhatsApp', icon: const Icon(Icons.chat_outlined), onPressed: () => _open(context, ExternalApps.whatsapp(whatsapp))),
+              IconButton(
+                tooltip: 'Abrir ubicación',
+                icon: const Icon(Icons.place_outlined),
+                onPressed: () => _open(
+                  context,
+                  ExternalApps.map(
+                    latitude: customer?.latitude,
+                    longitude: customer?.longitude,
+                    label: customer?.hasLocation ?? false ? stop.customerName : '${stop.customerAddress} ${stop.customerName}',
+                  ),
                 ),
               ),
-            ),
-          ]),
+            ]),
+          ),
         ]),
       ),
     );
@@ -283,26 +399,6 @@ class DoneStopsScreen extends ConsumerWidget {
           : ListView(padding: const EdgeInsets.fromLTRB(16, 8, 16, 32), children: [for (final stop in done) DeliveryStopCard(stop: stop)]),
     );
   }
-}
-
-class _Figure extends StatelessWidget {
-  const _Figure({required this.label, required this.value, this.color});
-
-  final String label;
-  final String value;
-  final Color? color;
-
-  @override
-  Widget build(BuildContext context) => Expanded(
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          FittedBox(
-            fit: BoxFit.scaleDown,
-            alignment: Alignment.centerLeft,
-            child: Text(value, style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: color ?? AppColors.ink)),
-          ),
-          Text(label, style: const TextStyle(fontSize: 12, color: AppColors.muted)),
-        ]),
-      );
 }
 
 class _Message extends StatelessWidget {

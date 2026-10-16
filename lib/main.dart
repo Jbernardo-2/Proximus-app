@@ -59,7 +59,9 @@ final _routerProvider = Provider<GoRouter>((ref) {
         GoRoute(path: 'order/:id', builder: (_, state) => OrderScreen(customerId: state.pathParameters['id']!)),
         GoRoute(path: 'customer/:id', builder: (_, state) => CustomerScreen(customerId: state.pathParameters['id']!)),
         GoRoute(path: 'deliveries', builder: (_, _) => const DeliveryRunScreen(), routes: [
-          GoRoute(path: ':runId/done', builder: (_, state) => DoneStopsScreen(runId: state.pathParameters['runId']!)),
+          GoRoute(path: ':runId', builder: (_, state) => DeliveryRunDetailScreen(runId: state.pathParameters['runId']!), routes: [
+            GoRoute(path: 'done', builder: (_, state) => DoneStopsScreen(runId: state.pathParameters['runId']!)),
+          ]),
         ]),
         GoRoute(path: 'orders/:key', builder: (_, state) => OrderDetailScreen(orderKey: state.pathParameters['key']!)),
       ]),
