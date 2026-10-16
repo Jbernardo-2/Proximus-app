@@ -10,31 +10,73 @@ String? _text(Object? value) {
   return text == null || text.isEmpty ? null : text;
 }
 
-/// A product loaded for a stop, as the warehouse loaded it.
+/// A product loaded for a stop, as the warehouse loaded it, and what happened to it
+/// once the driver recorded the delivery.
 final class LocalDeliveryItem {
-  const LocalDeliveryItem({required this.id, required this.productName, required this.presentationName, required this.unitPrice, required this.requested, required this.loaded, this.productId});
+  const LocalDeliveryItem({
+    required this.id,
+    required this.productName,
+    required this.presentationName,
+    required this.unitPrice,
+    required this.requested,
+    required this.loaded,
+    this.productId,
+    this.presentationId,
+    this.delivered,
+    this.returned,
+    this.damaged,
+    this.missing,
+  });
 
   factory LocalDeliveryItem.fromJson(Map<String, dynamic> json) => LocalDeliveryItem(
     id: json['id'].toString(),
     productId: json['product_id']?.toString(),
+    presentationId: json['product_presentation_id']?.toString(),
     productName: json['product_name']?.toString() ?? '',
     presentationName: json['presentation_name']?.toString() ?? '',
     unitPrice: _decimal(json['unit_price']),
     requested: _decimal(json['requested_quantity']),
     loaded: _decimal(json['loaded_quantity']),
+    delivered: json['delivered_quantity'] == null ? null : _decimal(json['delivered_quantity']),
+    returned: json['returned_quantity'] == null ? null : _decimal(json['returned_quantity']),
+    damaged: json['damaged_quantity'] == null ? null : _decimal(json['damaged_quantity']),
+    missing: json['missing_quantity'] == null ? null : _decimal(json['missing_quantity']),
   );
 
   final String id;
   final String? productId;
+  final String? presentationId;
   final String productName;
   final String presentationName;
   final DecimalValue unitPrice;
   final DecimalValue requested;
   final DecimalValue loaded;
 
+  /// Null until the delivery of the stop is recorded.
+  final DecimalValue? delivered;
+  final DecimalValue? returned;
+  final DecimalValue? damaged;
+  final DecimalValue? missing;
+
   /// The warehouse loaded less than was ordered.
   bool get isShort => loaded.compareTo(requested) < 0;
   DecimalValue get loadedTotal => loaded * unitPrice;
+  DecimalValue get deliveredTotal => (delivered ?? DecimalValue.zero) * unitPrice;
+
+  LocalDeliveryItem withOutcome({required DecimalValue delivered, required DecimalValue returned, required DecimalValue damaged, required DecimalValue missing}) => LocalDeliveryItem(
+    id: id,
+    productId: productId,
+    presentationId: presentationId,
+    productName: productName,
+    presentationName: presentationName,
+    unitPrice: unitPrice,
+    requested: requested,
+    loaded: loaded,
+    delivered: delivered,
+    returned: returned,
+    damaged: damaged,
+    missing: missing,
+  );
 }
 
 /// Where a stop stands for the driver.
@@ -70,6 +112,8 @@ final class LocalDeliveryStop {
     this.customer,
     this.outcomeStatus,
     this.rejectionMessage,
+    this.receiverName,
+    this.outcomeReasonLabel,
   });
 
   factory LocalDeliveryStop.fromJson(Map<String, dynamic> json) {
@@ -91,6 +135,8 @@ final class LocalDeliveryStop {
       collectedTotal: _decimal(json['collected_total']),
       balanceDue: _decimal(json['balance_due']),
       operationState: LocalOperationState.synchronized,
+      receiverName: _text(json['receiver_name']),
+      outcomeReasonLabel: _text(json['outcome_reason_label']),
     );
   }
 
@@ -116,6 +162,13 @@ final class LocalDeliveryStop {
   final LocalCustomer? customer;
   final String? rejectionMessage;
 
+  /// Who took the merchandise, and why something was not delivered.
+  final String? receiverName;
+  final String? outcomeReasonLabel;
+
+  /// The delivery of this stop is recorded (on the server or on the phone).
+  bool get hasOutcome => status != 'loaded';
+
   bool get isCredit => paymentTerm == 'credit';
   DecimalValue get loadedTotal => items.fold(DecimalValue.zero, (total, item) => total + item.loadedTotal);
   bool get hasShortItems => items.any((item) => item.isShort);
@@ -126,25 +179,39 @@ final class LocalDeliveryStop {
     _ => StopProgress.pending,
   };
 
-  LocalDeliveryStop copyWith({LocalCustomer? customer, LocalOperationState? operationState, String? rejectionMessage}) => LocalDeliveryStop(
+  LocalDeliveryStop copyWith({
+    LocalCustomer? customer,
+    LocalOperationState? operationState,
+    String? rejectionMessage,
+    String? status,
+    String? statusLabel,
+    String? outcomeStatus,
+    List<LocalDeliveryItem>? items,
+    DecimalValue? deliveredTotal,
+    DecimalValue? balanceDue,
+    String? receiverName,
+    String? outcomeReasonLabel,
+  }) => LocalDeliveryStop(
     id: id,
     visitOrder: visitOrder,
-    status: status,
-    statusLabel: statusLabel,
-    outcomeStatus: outcomeStatus,
+    status: status ?? this.status,
+    statusLabel: statusLabel ?? this.statusLabel,
+    outcomeStatus: outcomeStatus ?? this.outcomeStatus,
     orderId: orderId,
     orderNumber: orderNumber,
     customerId: customerId,
     customerName: customerName,
     customerAddress: customerAddress,
     paymentTerm: paymentTerm,
-    items: items,
-    deliveredTotal: deliveredTotal,
+    items: items ?? this.items,
+    deliveredTotal: deliveredTotal ?? this.deliveredTotal,
     collectedTotal: collectedTotal,
-    balanceDue: balanceDue,
+    balanceDue: balanceDue ?? this.balanceDue,
     operationState: operationState ?? this.operationState,
     customer: customer ?? this.customer,
     rejectionMessage: rejectionMessage ?? this.rejectionMessage,
+    receiverName: receiverName ?? this.receiverName,
+    outcomeReasonLabel: outcomeReasonLabel ?? this.outcomeReasonLabel,
   );
 }
 

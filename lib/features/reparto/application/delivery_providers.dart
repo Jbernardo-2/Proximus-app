@@ -4,6 +4,7 @@ import '../../../app/providers.dart';
 import '../../../core/location_capture.dart';
 import '../data/delivery_models.dart';
 import '../data/delivery_repository.dart';
+import '../data/outcome_draft.dart';
 
 /// The driver's runs with what the phone recorded and the server has not reflected yet.
 final deliveryRunsProvider = Provider<AsyncValue<List<LocalDeliveryRun>>>((ref) {
@@ -44,6 +45,34 @@ class DeliveryActions {
           summary: 'Jornada ${run.runNumber}',
           build: (_) async => DeliveryOperations.depart(runId: run.id, at: at, location: position),
         );
+    _ref.read(syncProvider.notifier).sync(pushOnly: true);
+  }
+
+  /// What was delivered, returned, damaged or missing at a stop. If the driver never
+  /// tapped "Salir", the departure is recorded first: the server needs it before.
+  Future<void> recordOutcome(LocalDeliveryRun run, LocalDeliveryStop stop, OutcomeDraft draft, {required LocationSession location, String? reasonLabel}) async {
+    final session = _ref.read(sessionProvider).value;
+    if (session == null) throw StateError('La sesión se cerró. Inicia sesión de nuevo.');
+    final problems = draft.problems();
+    if (problems.isNotEmpty) throw StateError(problems.first);
+    final at = DateTime.now();
+    final position = await location.take();
+    final outbox = _ref.read(outboxProvider);
+
+    if (!run.hasLeft) {
+      await outbox.enqueue(
+        deviceCode: session.deviceCode,
+        type: 'delivery.depart',
+        summary: 'Jornada ${run.runNumber}',
+        build: (_) async => DeliveryOperations.depart(runId: run.id, at: at, location: position),
+      );
+    }
+    await outbox.enqueue(
+      deviceCode: session.deviceCode,
+      type: 'delivery.outcome',
+      summary: stop.customerName,
+      build: (_) async => DeliveryOperations.outcome(runId: run.id, stopId: stop.id, draft: draft, at: at, location: position, reasonLabel: reasonLabel),
+    );
     _ref.read(syncProvider.notifier).sync(pushOnly: true);
   }
 }

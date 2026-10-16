@@ -8,6 +8,9 @@ import '../../../core/external_apps.dart';
 import '../../../core/formatting.dart';
 import '../../preventa/presentation/daily_route_screen.dart' show StatusChip;
 import '../../preventa/presentation/product_image.dart';
+import 'package:go_router/go_router.dart';
+
+import '../../preventa/data/preventa_models.dart' show LocalOperationState;
 import '../application/delivery_providers.dart';
 import '../data/delivery_models.dart';
 
@@ -78,7 +81,12 @@ class DeliveryStopScreen extends ConsumerWidget {
               const SizedBox(width: 12),
               if (stop.orderNumber != null)
                 Expanded(
-                  child: Text(stop.orderNumber!, textAlign: TextAlign.right, overflow: TextOverflow.ellipsis, style: const TextStyle(color: AppColors.muted)),
+                  child: Text(
+                    stop.orderNumber!,
+                    textAlign: TextAlign.right,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(color: AppColors.muted),
+                  ),
                 ),
             ],
           ),
@@ -103,17 +111,21 @@ class DeliveryStopScreen extends ConsumerWidget {
               padding: EdgeInsets.only(top: 8),
               child: Text('La bodega cargó menos de lo pedido en algún producto: el cliente solo paga lo que se le entrega.', style: TextStyle(fontSize: 12, color: AppColors.amber)),
             ),
-          if (!run.hasLeft)
-            const Padding(
-              padding: EdgeInsets.only(top: 16),
-              child: Text(
-                'Cuando salgas a ruta podrás registrar aquí lo que entregues.',
-                textAlign: TextAlign.center,
-                style: TextStyle(color: AppColors.muted),
-              ),
-            ),
+          if (stop.hasOutcome) ...[const SizedBox(height: 16), _RecordedOutcome(stop: stop)],
         ],
       ),
+      bottomNavigationBar: stop.hasOutcome
+          ? null
+          : SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+                child: FilledButton.icon(
+                  onPressed: () => context.push('/deliveries/$runId/stops/$stopId/outcome'),
+                  icon: const Icon(Icons.inventory_2_outlined),
+                  label: const Text('Registrar entrega'),
+                ),
+              ),
+            ),
     );
   }
 
@@ -213,6 +225,13 @@ class _PaymentCard extends StatelessWidget {
   }
 }
 
+String _outcomeText(LocalDeliveryItem item) => [
+  'Entregado ${item.delivered}',
+  if (!(item.returned ?? DecimalValue.zero).isZero) 'devuelto ${item.returned}',
+  if (!(item.damaged ?? DecimalValue.zero).isZero) 'dañado ${item.damaged}',
+  if (!(item.missing ?? DecimalValue.zero).isZero) 'faltó ${item.missing}',
+].join(' · ');
+
 class _ItemRow extends StatelessWidget {
   const _ItemRow({required this.item});
 
@@ -232,17 +251,81 @@ class _ItemRow extends StatelessWidget {
             children: [
               Text(item.productName, style: const TextStyle(fontWeight: FontWeight.w600)),
               Text('${item.loaded} × ${item.presentationName} · ${money(item.unitPrice)} c/u', style: const TextStyle(fontSize: 13, color: AppColors.muted)),
-              if (item.isShort)
+              if (item.isShort && item.delivered == null)
                 Text(
                   'Pedido ${item.requested}, cargado ${item.loaded}',
                   style: const TextStyle(fontSize: 12, color: AppColors.amber, fontWeight: FontWeight.w600),
+                ),
+              if (item.delivered != null)
+                Text(
+                  _outcomeText(item),
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: item.delivered == item.loaded ? AppColors.brand : AppColors.amber),
                 ),
             ],
           ),
         ),
         const SizedBox(width: 8),
-        Text(money(item.loadedTotal), style: const TextStyle(fontWeight: FontWeight.w700)),
+        Text(money(item.delivered == null ? item.loadedTotal : item.deliveredTotal), style: const TextStyle(fontWeight: FontWeight.w700)),
       ],
     ),
   );
+}
+
+/// What was recorded at this stop and whether the server has it yet.
+class _RecordedOutcome extends StatelessWidget {
+  const _RecordedOutcome({required this.stop});
+
+  final LocalDeliveryStop stop;
+
+  @override
+  Widget build(BuildContext context) {
+    final (sendLabel, sendColor) = switch (stop.operationState) {
+      LocalOperationState.pending => ('Por enviar', AppColors.amber),
+      LocalOperationState.rejected => ('Rechazado', AppColors.danger),
+      _ => ('Confirmado', AppColors.brand),
+    };
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Expanded(
+                  child: Text('Entrega registrada', style: TextStyle(fontWeight: FontWeight.w700)),
+                ),
+                StatusChip(text: sendLabel, color: sendColor, outlined: stop.operationState == LocalOperationState.pending),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(stop.statusLabel, style: const TextStyle(fontWeight: FontWeight.w600)),
+            if (stop.receiverName != null) Text('Recibió: ${stop.receiverName}', style: const TextStyle(color: AppColors.muted)),
+            if (stop.outcomeReasonLabel != null) Text('Motivo: ${stop.outcomeReasonLabel}', style: const TextStyle(color: AppColors.muted)),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                const Text('Entregado'),
+                const Spacer(),
+                Text(money(stop.deliveredTotal), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+              ],
+            ),
+            if (stop.progress == StopProgress.awaitingPayment)
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Text(
+                  stop.isCredit ? 'Falta registrar el cobro (queda a crédito o se paga ahora).' : 'Falta cobrar ${money(stop.balanceDue)}.',
+                  style: const TextStyle(color: AppColors.amber, fontWeight: FontWeight.w600),
+                ),
+              ),
+            if (stop.rejectionMessage != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Text(stop.rejectionMessage!, style: const TextStyle(color: AppColors.danger)),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
 }
