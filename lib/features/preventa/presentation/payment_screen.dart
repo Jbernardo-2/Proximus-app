@@ -10,6 +10,7 @@ import '../../../core/location_capture.dart';
 import '../application/preventa_actions.dart';
 import '../data/payment_draft.dart';
 import '../data/preventa_models.dart';
+import 'payment_split_editor.dart';
 import 'receipt_screen.dart';
 
 final _date = DateFormat('dd/MM/yyyy');
@@ -27,8 +28,6 @@ class PaymentScreen extends ConsumerStatefulWidget {
 class _PaymentScreenState extends ConsumerState<PaymentScreen> {
   late final LocationSession _location = ref.read(locationServiceProvider).start();
   final _amount = TextEditingController();
-  final List<TextEditingController> _lineAmounts = [];
-  final List<TextEditingController> _references = [TextEditingController()];
   PaymentDraft? _draft;
   bool _saving = false;
   bool _debtsChanged = false;
@@ -38,9 +37,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
 
   @override
   void dispose() {
-    for (final controller in [_amount, ..._lineAmounts, ..._references]) {
-      controller.dispose();
-    }
+    _amount.dispose();
     super.dispose();
   }
 
@@ -67,43 +64,6 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
     });
   }
 
-  void _addMethod(List<({String value, String label})> methods) {
-    final draft = _draft!;
-    final used = draft.lines.map((line) => line.method).toSet();
-    final next = methods.where((method) => !used.contains(method.value)).firstOrNull?.value ?? 'other';
-    if (_lineAmounts.isEmpty) {
-      _lineAmounts.add(TextEditingController(text: draft.lines.single.amount.toFixed(2)));
-    }
-    _lineAmounts.add(TextEditingController());
-    _references.add(TextEditingController());
-    setState(() => _draft = draft.withLines([...draft.lines, PaymentLine(method: next, amount: DecimalValue.zero)]));
-  }
-
-  void _removeMethod(int index) {
-    final lines = [..._draft!.lines]..removeAt(index);
-    _lineAmounts.removeAt(index).dispose();
-    _references.removeAt(index).dispose();
-    if (lines.length == 1) {
-      for (final controller in _lineAmounts) {
-        controller.dispose();
-      }
-      _lineAmounts.clear();
-      lines[0] = lines[0].copyWith(amount: _draft!.amount);
-    }
-    setState(() => _draft = _draft!.withLines(lines));
-  }
-
-  void _updateLine(int index, {String? method, String? amount, String? reference}) {
-    final lines = [..._draft!.lines];
-    final current = lines[index];
-    lines[index] = PaymentLine(
-      method: method ?? current.method,
-      amount: amount == null ? current.amount : (parseAmount(amount) ?? DecimalValue.zero),
-      reference: reference ?? current.reference,
-    );
-    setState(() => _draft = _draft!.withLines(lines));
-  }
-
   Future<void> _save(LocalCustomer customer) async {
     setState(() => _saving = true);
     try {
@@ -123,7 +83,10 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
     final profile = ref.watch(customerProfileProvider(widget.customerId));
     final manifest = ref.watch(manifestProvider).value;
     if (profile == null) {
-      return Scaffold(appBar: AppBar(title: const Text('Abono')), body: const Center(child: Text('Este cliente no está en el teléfono.')));
+      return Scaffold(
+        appBar: AppBar(title: const Text('Abono')),
+        body: const Center(child: Text('Este cliente no está en el teléfono.')),
+      );
     }
     var draft = _draft ??= PaymentDraft.start(profile.receivables);
     // A sync while the screen is open can change the debts (another payment, a new
@@ -133,23 +96,28 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
       _debtsChanged = true;
     }
     if (draft.debts.isEmpty) {
-      return Scaffold(appBar: AppBar(title: const Text('Abono')), body: const Center(child: Text('El cliente no tiene deudas abiertas.')));
+      return Scaffold(
+        appBar: AppBar(title: const Text('Abono')),
+        body: const Center(child: Text('El cliente no tiene deudas abiertas.')),
+      );
     }
     final methods = manifest?.options('payment_methods') ?? const [(value: 'cash', label: 'Efectivo')];
     final requiringReference = manifest?.requiringReference('payment_methods') ?? const <String>{};
     final problems = draft.problems(methodsRequiringReference: requiringReference);
-    final multiple = draft.lines.length > 1;
+    final lines = [for (final line in draft.lines) (method: line.method, amount: line.amount, reference: line.reference)];
 
     return Scaffold(
       appBar: AppBar(title: Text('Abono · ${profile.customer.businessName}', overflow: TextOverflow.ellipsis)),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
         children: [
-          Row(children: [
-            const Text('Deuda total', style: TextStyle(color: AppColors.muted)),
-            const Spacer(),
-            Text(money(draft.totalDebt), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
-          ]),
+          Row(
+            children: [
+              const Text('Deuda total', style: TextStyle(color: AppColors.muted)),
+              const Spacer(),
+              Text(money(draft.totalDebt), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+            ],
+          ),
           const SizedBox(height: 12),
           TextField(
             controller: _amount,
@@ -166,10 +134,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
           if (_debtsChanged)
             const Padding(
               padding: EdgeInsets.only(top: 8),
-              child: Text(
-                'Las deudas se actualizaron con la última sincronización; el monto se volvió a aplicar. Revisa la distribución.',
-                style: TextStyle(color: AppColors.amber, fontSize: 13),
-              ),
+              child: Text('Las deudas se actualizaron con la última sincronización; el monto se volvió a aplicar. Revisa la distribución.', style: TextStyle(color: AppColors.amber, fontSize: 13)),
             ),
           const SizedBox(height: 20),
           const Text('Aplicado a', style: TextStyle(fontWeight: FontWeight.w700)),
@@ -194,67 +159,32 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
           const SizedBox(height: 12),
           const Text('Forma de pago', style: TextStyle(fontWeight: FontWeight.w700)),
           const SizedBox(height: 8),
-          for (var index = 0; index < draft.lines.length; index++)
-            Card(
-              margin: const EdgeInsets.only(bottom: 8),
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(12, 8, 4, 8),
-                child: Column(children: [
-                  Row(children: [
-                    Expanded(
-                      child: DropdownButtonFormField<String>(
-                        initialValue: draft.lines[index].method,
-                        isExpanded: true,
-                        decoration: const InputDecoration(labelText: 'Método', isDense: true),
-                        items: [for (final method in methods) DropdownMenuItem(value: method.value, child: Text(method.label))],
-                        onChanged: (value) => _updateLine(index, method: value),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    if (multiple)
-                      SizedBox(
-                        width: 120,
-                        child: TextField(
-                          controller: _lineAmounts[index],
-                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                          decoration: const InputDecoration(labelText: 'Monto', prefixText: 'L ', isDense: true),
-                          onChanged: (value) => _updateLine(index, amount: value),
-                        ),
-                      )
-                    else
-                      Padding(padding: const EdgeInsets.only(right: 8), child: Text(money(draft.lines[index].amount), style: const TextStyle(fontWeight: FontWeight.w700))),
-                    if (multiple) IconButton(tooltip: 'Quitar', icon: const Icon(Icons.close, size: 20), onPressed: () => _removeMethod(index)),
-                  ]),
-                  const SizedBox(height: 8),
-                  Padding(
-                    padding: const EdgeInsets.only(right: 8),
-                    child: TextField(
-                      controller: _references[index],
-                      decoration: InputDecoration(
-                        labelText: requiringReference.contains(draft.lines[index].method) ? 'Referencia (obligatoria)' : 'Referencia (opcional)',
-                        isDense: true,
-                      ),
-                      onChanged: (value) => _updateLine(index, reference: value),
-                    ),
-                  ),
-                ]),
-              ),
-            ),
-          TextButton.icon(onPressed: () => _addMethod(methods), icon: const Icon(Icons.add), label: const Text('Combinar con otra forma de pago')),
-          if (problems.isNotEmpty && !draft.amount.isZero) ...[
-            const SizedBox(height: 8),
-            for (final problem in problems.toSet()) Text('• $problem', style: const TextStyle(color: AppColors.amber)),
-          ],
+          PaymentSplitEditor(
+            total: draft.amount,
+            lines: lines,
+            methods: methods,
+            requiringReference: requiringReference,
+            withoutReference: const {},
+            onChanged: (next) => setState(() => _draft = draft.withLines([for (final line in next) PaymentLine(method: line.method, amount: line.amount, reference: line.reference)])),
+          ),
+          if (problems.isNotEmpty && !draft.amount.isZero) ...[const SizedBox(height: 8), for (final problem in problems.toSet()) Text('• $problem', style: const TextStyle(color: AppColors.amber))],
         ],
       ),
       bottomNavigationBar: SafeArea(
         child: Padding(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-          child: FilledButton(
-            onPressed: problems.isNotEmpty || _saving ? null : () => _save(profile.customer),
-            child: _saving
-                ? const SizedBox.square(dimension: 20, child: CircularProgressIndicator(strokeWidth: 2))
-                : Text(draft.amount.isZero ? 'Registrar abono' : 'Registrar abono de ${money(draft.amount)}'),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (!draft.amount.isZero) ...[SplitRemainingBar(total: draft.amount, lines: lines), const SizedBox(height: 8)],
+              FilledButton(
+                onPressed: problems.isNotEmpty || _saving ? null : () => _save(profile.customer),
+                child: _saving
+                    ? const SizedBox.square(dimension: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                    : Text(draft.amount.isZero ? 'Registrar abono' : 'Registrar abono de ${money(draft.amount)}'),
+              ),
+            ],
           ),
         ),
       ),
@@ -285,16 +215,16 @@ class _AllocationDialogState extends State<_AllocationDialog> {
 
   @override
   Widget build(BuildContext context) => AlertDialog(
-        title: Text('Aplicar a ${widget.debt.documentNumber ?? 'la deuda'}'),
-        content: TextField(
-          controller: _controller,
-          autofocus: true,
-          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          decoration: InputDecoration(labelText: 'Monto', helperText: 'Debe ${money(widget.debt.outstanding)}'),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar')),
-          FilledButton(onPressed: () => Navigator.pop(context, parseAmount(_controller.text)), child: const Text('Aplicar')),
-        ],
-      );
+    title: Text('Aplicar a ${widget.debt.documentNumber ?? 'la deuda'}'),
+    content: TextField(
+      controller: _controller,
+      autofocus: true,
+      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+      decoration: InputDecoration(labelText: 'Monto', helperText: 'Debe ${money(widget.debt.outstanding)}'),
+    ),
+    actions: [
+      TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar')),
+      FilledButton(onPressed: () => Navigator.pop(context, parseAmount(_controller.text)), child: const Text('Aplicar')),
+    ],
+  );
 }
