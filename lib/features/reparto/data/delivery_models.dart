@@ -114,6 +114,7 @@ final class LocalDeliveryStop {
     this.rejectionMessage,
     this.receiverName,
     this.outcomeReasonLabel,
+    this.invoice,
   });
 
   factory LocalDeliveryStop.fromJson(Map<String, dynamic> json) {
@@ -166,6 +167,9 @@ final class LocalDeliveryStop {
   final String? receiverName;
   final String? outcomeReasonLabel;
 
+  /// The invoice issued on this phone for the stop, to reprint it (see DeliveryInvoice.fromJson).
+  final Map<String, dynamic>? invoice;
+
   /// The delivery of this stop is recorded (on the server or on the phone).
   bool get hasOutcome => status != 'loaded';
 
@@ -191,6 +195,8 @@ final class LocalDeliveryStop {
     DecimalValue? balanceDue,
     String? receiverName,
     String? outcomeReasonLabel,
+    DecimalValue? collectedTotal,
+    Map<String, dynamic>? invoice,
   }) => LocalDeliveryStop(
     id: id,
     visitOrder: visitOrder,
@@ -205,13 +211,14 @@ final class LocalDeliveryStop {
     paymentTerm: paymentTerm,
     items: items ?? this.items,
     deliveredTotal: deliveredTotal ?? this.deliveredTotal,
-    collectedTotal: collectedTotal,
+    collectedTotal: collectedTotal ?? this.collectedTotal,
     balanceDue: balanceDue ?? this.balanceDue,
     operationState: operationState ?? this.operationState,
     customer: customer ?? this.customer,
     rejectionMessage: rejectionMessage ?? this.rejectionMessage,
     receiverName: receiverName ?? this.receiverName,
     outcomeReasonLabel: outcomeReasonLabel ?? this.outcomeReasonLabel,
+    invoice: invoice ?? this.invoice,
   );
 }
 

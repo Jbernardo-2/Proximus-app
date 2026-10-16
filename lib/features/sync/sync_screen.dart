@@ -9,6 +9,8 @@ import '../../data/database.dart';
 import '../../sync/operation_view.dart';
 import '../preventa/documents/payment_receipt.dart';
 import '../preventa/presentation/receipt_screen.dart';
+import '../reparto/documents/delivery_invoice.dart';
+import '../reparto/presentation/delivery_invoice_screen.dart';
 import 'sync_format.dart';
 import 'sync_summary_card.dart';
 
@@ -169,6 +171,15 @@ class OperationSheet extends ConsumerWidget {
               onPressed: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => ReceiptScreen(receipt: PaymentReceipt.fromJson(receipt)))),
               icon: const Icon(Icons.receipt_long),
               label: const Text('Ver o reimprimir comprobante'),
+            ),
+          if (view.payload['invoice'] is Map)
+            OutlinedButton.icon(
+              style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(46)),
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(builder: (_) => DeliveryInvoiceScreen(invoice: DeliveryInvoice.fromJson((view.payload['invoice'] as Map).cast<String, dynamic>()))),
+              ),
+              icon: const Icon(Icons.receipt_long),
+              label: const Text('Ver o reimprimir factura'),
             ),
           if (view.row.type == 'order.create')
             OutlinedButton.icon(

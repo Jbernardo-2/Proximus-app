@@ -6,6 +6,7 @@ import '../../../core/decimal_value.dart';
 import '../../preventa/data/preventa_models.dart' show LocalCustomer, LocalOperationState;
 import 'delivery_models.dart';
 import 'outcome_draft.dart';
+import 'settlement_draft.dart';
 
 /// The driver's runs as they should look right now: what the server sent plus
 /// what was recorded on the phone and the server does not reflect yet.
@@ -20,7 +21,7 @@ List<LocalDeliveryRun> mergeDeliveryRuns({required List<Map<String, dynamic>> re
   };
 
   for (final operation in outbox) {
-    if (operation.type != 'delivery.depart' && operation.type != 'delivery.outcome') continue;
+    if (!const {'delivery.depart', 'delivery.outcome', 'delivery.payment'}.contains(operation.type)) continue;
     // Accepted before the last download: the server data already includes it.
     if (operation.status == OutboxStatus.done && pulledAt != null && !(operation.processedAt?.isAfter(pulledAt) ?? false)) continue;
     final payload = (jsonDecode(operation.payload) as Map).cast<String, dynamic>();
@@ -40,7 +41,12 @@ List<LocalDeliveryRun> mergeDeliveryRuns({required List<Map<String, dynamic>> re
           if (stop.id != payload['run_order_id']?.toString())
             stop
           else if (operation.status == OutboxStatus.rejected)
-            stop.copyWith(operationState: LocalOperationState.rejected, rejectionMessage: operation.message ?? 'El servidor no aceptó la entrega.')
+            stop.copyWith(
+              operationState: LocalOperationState.rejected,
+              rejectionMessage: operation.message ?? (operation.type == 'delivery.payment' ? 'El servidor no aceptó el cobro.' : 'El servidor no aceptó la entrega.'),
+            )
+          else if (operation.type == 'delivery.payment')
+            applyPayment(stop, payload, state: operation.status == OutboxStatus.pending ? LocalOperationState.pending : LocalOperationState.accepted)
           else
             applyOutcome(stop, payload, state: operation.status == OutboxStatus.pending ? LocalOperationState.pending : LocalOperationState.accepted),
       ],
@@ -83,6 +89,24 @@ LocalDeliveryStop applyOutcome(LocalDeliveryStop stop, Map<String, dynamic> payl
   );
 }
 
+/// The stop once paid: finished with what was delivered, the cash collected counted
+/// and the invoice kept on the phone to reprint it.
+LocalDeliveryStop applyPayment(LocalDeliveryStop stop, Map<String, dynamic> payload, {required LocalOperationState state}) {
+  final collected = [
+    for (final line in (payload['allocations'] as List? ?? const []).cast<Map>())
+      if (line['method'] != 'credit') DecimalValue.parse(line['amount'] ?? '0'),
+  ].fold(DecimalValue.zero, (sum, amount) => sum + amount);
+  final outcome = stop.outcomeStatus ?? 'delivered';
+  return stop.copyWith(
+    status: outcome,
+    statusLabel: outcome == 'partially_delivered' ? 'Entrega parcial' : 'Entregado',
+    collectedTotal: stop.collectedTotal + collected,
+    balanceDue: DecimalValue.zero,
+    operationState: state,
+    invoice: (payload['invoice'] as Map?)?.cast<String, dynamic>(),
+  );
+}
+
 /// The runs the driver still has to work on, in the order they matter: today's first,
 /// then the newest. Finished runs (waiting to be settled) are left out.
 List<LocalDeliveryRun> runsToWork(List<LocalDeliveryRun> runs, {DateTime? now}) {
@@ -100,6 +124,35 @@ List<LocalDeliveryRun> runsToWork(List<LocalDeliveryRun> runs, {DateTime? now}) 
 
 /// Payloads of the driver's operations (contract section 4).
 abstract final class DeliveryOperations {
+  /// [receipts] holds the receipt number of each non-credit line, in order.
+  static Map<String, dynamic> payment({
+    required String runId,
+    required String stopId,
+    required String invoiceNumber,
+    required SettlementDraft draft,
+    required List<String?> receipts,
+    required DateTime at,
+    required LocationCapture location,
+    required Map<String, dynamic> invoice,
+  }) => {
+    'delivery_run_id': runId,
+    'run_order_id': stopId,
+    'invoice_number': invoiceNumber,
+    'allocations': [
+      for (final (index, line) in draft.lines.indexed)
+        {
+          'method': line.method,
+          'amount': line.amount.toString(),
+          'reference': (line.reference ?? '').trim().isEmpty ? null : line.reference!.trim(),
+          if (!line.isCredit) 'receipt_number': receipts[index],
+        },
+    ],
+    'credit_reason': draft.credit.isZero || draft.creditReason.trim().isEmpty ? null : draft.creditReason.trim(),
+    'location': location.toPayload(at),
+    // Kept on the phone to reprint the invoice; the server ignores it.
+    'invoice': invoice,
+  };
+
   static Map<String, dynamic> outcome({required String runId, required String stopId, required OutcomeDraft draft, required DateTime at, required LocationCapture location, String? reasonLabel}) => {
     'delivery_run_id': runId,
     'run_order_id': stopId,

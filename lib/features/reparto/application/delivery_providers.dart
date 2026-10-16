@@ -5,6 +5,9 @@ import '../../../core/location_capture.dart';
 import '../data/delivery_models.dart';
 import '../data/delivery_repository.dart';
 import '../data/outcome_draft.dart';
+import '../data/settlement_draft.dart';
+import '../documents/delivery_invoice.dart';
+import '../../../core/decimal_value.dart';
 
 /// The driver's runs with what the phone recorded and the server has not reflected yet.
 final deliveryRunsProvider = Provider<AsyncValue<List<LocalDeliveryRun>>>((ref) {
@@ -46,6 +49,54 @@ class DeliveryActions {
           build: (_) async => DeliveryOperations.depart(runId: run.id, at: at, location: position),
         );
     _ref.read(syncProvider.notifier).sync(pushOnly: true);
+  }
+
+  /// The payment of a delivered stop, with the invoice and receipts numbered by this
+  /// phone's series in the same transaction that queues it. Returns the invoice to print.
+  Future<DeliveryInvoice> recordPayment(LocalDeliveryRun run, LocalDeliveryStop stop, SettlementDraft draft, {required LocationSession location}) async {
+    final session = _ref.read(sessionProvider).value;
+    if (session == null) throw StateError('La sesión se cerró. Inicia sesión de nuevo.');
+    final manifest = _ref.read(manifestProvider).value;
+    final labels = {for (final option in manifest?.options('settlement_methods') ?? const <({String value, String label})>[]) option.value: option.label};
+    final at = DateTime.now();
+    final position = await location.take();
+    late DeliveryInvoice invoice;
+
+    await _ref
+        .read(outboxProvider)
+        .enqueue(
+          deviceCode: session.deviceCode,
+          type: 'delivery.payment',
+          summary: stop.customerName,
+          build: (number) async {
+            final invoiceNumber = await number('invoice');
+            final receipts = <String?>[for (final line in draft.lines) line.isCredit ? null : await number('receipt')];
+            invoice = DeliveryInvoice(
+              number: invoiceNumber,
+              issuedAt: at,
+              company: manifest?.company ?? const {},
+              customerName: stop.customerName,
+              customerCode: stop.customer?.code ?? '',
+              customerAddress: stop.customerAddress,
+              runNumber: run.runNumber,
+              orderNumber: stop.orderNumber,
+              deliveredBy: session.userName,
+              receiverName: stop.receiverName ?? '',
+              items: [
+                for (final item in stop.items)
+                  if (!(item.delivered ?? DecimalValue.zero).isZero) (name: item.productName, presentation: item.presentationName, quantity: item.delivered!, unitPrice: item.unitPrice),
+              ],
+              lines: [
+                for (final (index, line) in draft.lines.indexed)
+                  (label: labels[line.method] ?? line.method, reference: line.reference, receiptNumber: receipts[index], amount: line.amount, isCredit: line.isCredit),
+              ],
+              total: draft.total,
+            );
+            return DeliveryOperations.payment(runId: run.id, stopId: stop.id, invoiceNumber: invoiceNumber, draft: draft, receipts: receipts, at: at, location: position, invoice: invoice.toJson());
+          },
+        );
+    _ref.read(syncProvider.notifier).sync(pushOnly: true);
+    return invoice;
   }
 
   /// What was delivered, returned, damaged or missing at a stop. If the driver never

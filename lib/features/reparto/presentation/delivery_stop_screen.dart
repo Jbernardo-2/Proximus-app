@@ -13,6 +13,8 @@ import 'package:go_router/go_router.dart';
 import '../../preventa/data/preventa_models.dart' show LocalOperationState;
 import '../application/delivery_providers.dart';
 import '../data/delivery_models.dart';
+import '../documents/delivery_invoice.dart';
+import 'delivery_invoice_screen.dart';
 
 /// Everything the driver needs at the customer's door: who, how to reach them, how
 /// it is paid and exactly what was loaded for them.
@@ -114,18 +116,30 @@ class DeliveryStopScreen extends ConsumerWidget {
           if (stop.hasOutcome) ...[const SizedBox(height: 16), _RecordedOutcome(stop: stop)],
         ],
       ),
-      bottomNavigationBar: stop.hasOutcome
-          ? null
-          : SafeArea(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-                child: FilledButton.icon(
-                  onPressed: () => context.push('/deliveries/$runId/stops/$stopId/outcome'),
-                  icon: const Icon(Icons.inventory_2_outlined),
-                  label: const Text('Registrar entrega'),
-                ),
-              ),
+      bottomNavigationBar: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+          child: switch (stop.progress) {
+            StopProgress.pending => FilledButton.icon(
+              onPressed: () => context.push('/deliveries/$runId/stops/$stopId/outcome'),
+              icon: const Icon(Icons.inventory_2_outlined),
+              label: const Text('Registrar entrega'),
             ),
+            StopProgress.awaitingPayment => FilledButton.icon(
+              onPressed: () => context.push('/deliveries/$runId/stops/$stopId/payment'),
+              icon: const Icon(Icons.payments_outlined),
+              label: Text(stop.isCredit ? 'Registrar cobro' : 'Cobrar ${money(stop.balanceDue)}'),
+            ),
+            StopProgress.done when stop.invoice != null => OutlinedButton.icon(
+              style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(50)),
+              onPressed: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => DeliveryInvoiceScreen(invoice: DeliveryInvoice.fromJson(stop.invoice!)))),
+              icon: const Icon(Icons.receipt_long),
+              label: const Text('Ver o reimprimir factura'),
+            ),
+            StopProgress.done => const SizedBox.shrink(),
+          },
+        ),
+      ),
     );
   }
 

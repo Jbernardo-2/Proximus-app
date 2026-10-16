@@ -30,14 +30,7 @@ const operationLabels = {
 
 /// An outbox row explained: what was recorded, what the server answered and what to do.
 final class OperationView {
-  OperationView._({
-    required this.row,
-    required this.payload,
-    required this.state,
-    required this.details,
-    this.serverNumber,
-    this.recommendation,
-  });
+  OperationView._({required this.row, required this.payload, required this.state, required this.details, this.serverNumber, this.recommendation});
 
   /// [sending] while a sync cycle runs; [offline] when the last attempt found no signal.
   factory OperationView.of(OutboxData row, {required bool sending, required bool offline}) {
@@ -106,6 +99,17 @@ final class OperationView {
         return [('Motivo', payload['reason']?.toString() ?? ''), if ((payload['notes'] ?? '').toString().isNotEmpty) ('Notas', payload['notes'].toString())];
       case 'customer.create':
         return [('Dirección', payload['address']?.toString() ?? '')];
+      case 'delivery.payment':
+        final lines = (payload['allocations'] as List? ?? const []).cast<Map>();
+        return [
+          if (payload['invoice_number'] != null) ('Factura', payload['invoice_number'].toString()),
+          ('Total', money(lines.fold(DecimalValue.zero, (sum, line) => sum + value(line['amount'])))),
+          ('Formas de pago', '${lines.length}'),
+        ];
+      case 'delivery.outcome':
+        final items = (payload['items'] as List? ?? const []).cast<Map>();
+        final delivered = items.where((item) => !value(item['delivered_quantity']).isZero).length;
+        return [('Productos entregados', '$delivered de ${items.length}'), if (payload['receiver_name'] != null) ('Recibió', payload['receiver_name'].toString())];
       default:
         return const [];
     }
