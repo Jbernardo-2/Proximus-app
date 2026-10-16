@@ -5,18 +5,13 @@ import 'package:go_router/go_router.dart';
 import '../../app/modules.dart';
 import '../../app/providers.dart';
 import '../../app/theme.dart';
+import '../reparto/presentation/driver_dashboard.dart';
 import '../session/background_banner.dart';
 import '../session/session_banner.dart';
 import '../sync/sync_screen.dart';
 import '../sync/sync_summary_card.dart';
 
-const roleLabels = {
-  'admin': 'Administrador',
-  'supervisor': 'Supervisor',
-  'preventista': 'Preventista',
-  'repartidor': 'Repartidor',
-  'bodeguero': 'Bodeguero',
-};
+const roleLabels = {'admin': 'Administrador', 'supervisor': 'Supervisor', 'preventista': 'Preventista', 'repartidor': 'Repartidor', 'bodeguero': 'Bodeguero'};
 
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});
@@ -29,6 +24,8 @@ class HomeScreen extends ConsumerWidget {
     ref.watch(syncProvider);
     final manifest = ref.watch(manifestProvider).value;
     final modules = manifest == null ? const <AppModule>[] : modulesFor(manifest, session);
+    // A driver's home is their day, not a menu: the dashboard takes the place of the modules.
+    final driverHome = modules.any((module) => module.path == '/deliveries') && !modules.any((module) => module.path == '/route');
 
     return Scaffold(
       appBar: AppBar(
@@ -39,9 +36,7 @@ class HomeScreen extends ConsumerWidget {
             Text('${roleLabels[session.role] ?? session.role} · Teléfono ${session.deviceCode}', style: const TextStyle(fontSize: 13, color: AppColors.muted)),
           ],
         ),
-        actions: [
-          IconButton(tooltip: 'Ajustes', icon: const Icon(Icons.settings_outlined), onPressed: () => context.push('/settings')),
-        ],
+        actions: [IconButton(tooltip: 'Ajustes', icon: const Icon(Icons.settings_outlined), onPressed: () => context.push('/settings'))],
       ),
       body: ListView(
         padding: const EdgeInsets.all(16),
@@ -49,27 +44,35 @@ class HomeScreen extends ConsumerWidget {
           const SessionBanner(),
           const BackgroundBanner(),
           const ClockWarning(),
-          SyncSummaryCard(onTap: () => context.go('/sync')),
-          const SizedBox(height: 24),
-          const Text('Módulos', style: TextStyle(fontWeight: FontWeight.w700, color: AppColors.ink)),
-          const SizedBox(height: 8),
-          if (manifest == null)
-            const Text('Sincroniza con señal para cargar tus módulos.', style: TextStyle(color: AppColors.muted))
-          else
-            GridView.count(
-              crossAxisCount: 2,
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              mainAxisSpacing: 12,
-              crossAxisSpacing: 12,
-              childAspectRatio: 1.5,
-              children: [for (final module in modules) _ModuleTile(module: module)],
+          if (driverHome) ...[
+            const DriverDashboard(),
+            const SizedBox(height: 20),
+            SyncSummaryCard(onTap: () => context.go('/sync')),
+          ] else ...[
+            SyncSummaryCard(onTap: () => context.go('/sync')),
+            const SizedBox(height: 24),
+            const Text(
+              'Módulos',
+              style: TextStyle(fontWeight: FontWeight.w700, color: AppColors.ink),
             ),
+            const SizedBox(height: 8),
+            if (manifest == null)
+              const Text('Sincroniza con señal para cargar tus módulos.', style: TextStyle(color: AppColors.muted))
+            else
+              GridView.count(
+                crossAxisCount: 2,
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                mainAxisSpacing: 12,
+                crossAxisSpacing: 12,
+                childAspectRatio: 1.5,
+                children: [for (final module in modules) _ModuleTile(module: module)],
+              ),
+          ],
         ],
       ),
     );
   }
-
 }
 
 class _ModuleTile extends StatelessWidget {
@@ -91,10 +94,16 @@ class _ModuleTile extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Icon(module.icon, color: color),
-              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(module.label, style: TextStyle(fontWeight: FontWeight.w600, color: module.isReady ? AppColors.ink : AppColors.muted)),
-                if (!module.isReady) const Text('En construcción', style: TextStyle(fontSize: 12, color: AppColors.muted)),
-              ]),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    module.label,
+                    style: TextStyle(fontWeight: FontWeight.w600, color: module.isReady ? AppColors.ink : AppColors.muted),
+                  ),
+                  if (!module.isReady) const Text('En construcción', style: TextStyle(fontSize: 12, color: AppColors.muted)),
+                ],
+              ),
             ],
           ),
         ),

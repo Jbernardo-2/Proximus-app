@@ -7,12 +7,7 @@ import 'delivery_models.dart';
 
 /// The driver's runs as they should look right now: what the server sent plus
 /// what was recorded on the phone and the server does not reflect yet.
-List<LocalDeliveryRun> mergeDeliveryRuns({
-  required List<Map<String, dynamic>> records,
-  required List<OutboxData> outbox,
-  required List<Map<String, dynamic>> customers,
-  required DateTime? pulledAt,
-}) {
+List<LocalDeliveryRun> mergeDeliveryRuns({required List<Map<String, dynamic>> records, required List<OutboxData> outbox, required List<Map<String, dynamic>> customers, required DateTime? pulledAt}) {
   final contacts = {for (final json in customers) json['id'].toString(): LocalCustomer.fromJson(json)};
   final runs = {
     for (final json in records)
@@ -41,20 +36,18 @@ List<LocalDeliveryRun> mergeDeliveryRuns({
 /// then the newest. Finished runs (waiting to be settled) are left out.
 List<LocalDeliveryRun> runsToWork(List<LocalDeliveryRun> runs, {DateTime? now}) {
   final today = now ?? DateTime.now();
-  bool isToday(LocalDeliveryRun run) =>
-      run.scheduledDate != null && run.scheduledDate!.year == today.year && run.scheduledDate!.month == today.month && run.scheduledDate!.day == today.day;
+  bool isToday(LocalDeliveryRun run) => run.scheduledDate != null && run.scheduledDate!.year == today.year && run.scheduledDate!.month == today.month && run.scheduledDate!.day == today.day;
 
-  return [for (final run in runs) if (run.needsDriver) run]
-    ..sort((a, b) {
-      if (isToday(a) != isToday(b)) return isToday(a) ? -1 : 1;
-      return (b.scheduledDate ?? DateTime(0)).compareTo(a.scheduledDate ?? DateTime(0));
-    });
+  return [
+    for (final run in runs)
+      if (run.needsDriver) run,
+  ]..sort((a, b) {
+    if (isToday(a) != isToday(b)) return isToday(a) ? -1 : 1;
+    return (b.scheduledDate ?? DateTime(0)).compareTo(a.scheduledDate ?? DateTime(0));
+  });
 }
 
 /// Payloads of the driver's operations (contract section 4).
 abstract final class DeliveryOperations {
-  static Map<String, dynamic> depart({required String runId, required DateTime at, required LocationCapture location}) => {
-        'delivery_run_id': runId,
-        'location': location.toPayload(at),
-      };
+  static Map<String, dynamic> depart({required String runId, required DateTime at, required LocationCapture location}) => {'delivery_run_id': runId, 'location': location.toPayload(at)};
 }

@@ -12,49 +12,53 @@ import 'package:proximus_app/features/reparto/application/delivery_providers.dar
 import 'package:proximus_app/features/reparto/data/delivery_models.dart';
 import 'package:proximus_app/features/reparto/data/delivery_repository.dart';
 import 'package:proximus_app/features/reparto/presentation/delivery_run_screen.dart';
+import 'package:proximus_app/features/reparto/presentation/delivery_stop_screen.dart';
+import 'package:proximus_app/features/reparto/presentation/driver_dashboard.dart';
+import 'package:proximus_app/core/decimal_value.dart';
+import 'package:proximus_app/features/preventa/data/preventista_repository.dart' show CustomerBalance;
 
 Map<String, dynamic> stopJson(int order, {String status = 'loaded', String term = 'cash', String loaded = '3'}) => {
-      'id': 'ro$order',
-      'visit_order': order,
-      'status': status,
-      'status_label': status == 'delivered' ? 'Entregado' : 'Cargado',
-      'order': {
-        'id': 'o$order',
-        'order_number': 'PED-2026-00004$order',
-        'customer_id': 'c$order',
-        'customer_name': 'Pulpería con un nombre bastante largo número $order',
-        'customer_address': 'Barrio El Centro, avenida principal, frente a la iglesia católica',
-        'payment_term': term,
-      },
-      'items': [
-        {'id': 'i$order', 'product_id': 'p1', 'product_name': 'Arroz 1 lb', 'presentation_name': 'Unidad', 'unit_price': '18.0000', 'requested_quantity': '3.000000', 'loaded_quantity': '$loaded.000000'},
-      ],
-      'delivered_total': '0.0000',
-      'collected_total': status == 'delivered' ? '54.0000' : '0.0000',
-      'balance_due': '0.0000',
-    };
+  'id': 'ro$order',
+  'visit_order': order,
+  'status': status,
+  'status_label': status == 'delivered' ? 'Entregado' : 'Cargado',
+  'order': {
+    'id': 'o$order',
+    'order_number': 'PED-2026-00004$order',
+    'customer_id': 'c$order',
+    'customer_name': 'Pulpería con un nombre bastante largo número $order',
+    'customer_address': 'Barrio El Centro, avenida principal, frente a la iglesia católica',
+    'payment_term': term,
+  },
+  'items': [
+    {'id': 'i$order', 'product_id': 'p1', 'product_name': 'Arroz 1 lb', 'presentation_name': 'Unidad', 'unit_price': '18.0000', 'requested_quantity': '3.000000', 'loaded_quantity': '$loaded.000000'},
+  ],
+  'delivered_total': '0.0000',
+  'collected_total': status == 'delivered' ? '54.0000' : '0.0000',
+  'balance_due': '0.0000',
+};
 
 Map<String, dynamic> runJson({String status = 'loaded'}) => {
-      'id': 'run1',
-      'run_number': 'RUT-2026-000013',
-      'status': status,
-      'scheduled_date': '2026-10-15',
-      'vehicle_code': 'CAMPO-01',
-      'vehicle_license_plate': 'PCA 0001',
-      'orders': [stopJson(2, term: 'credit', loaded: '2'), stopJson(1), stopJson(3, status: 'delivered'), stopJson(4, status: 'awaiting_payment')],
-    };
+  'id': 'run1',
+  'run_number': 'RUT-2026-000013',
+  'status': status,
+  'scheduled_date': '2026-10-15',
+  'vehicle_code': 'CAMPO-01',
+  'vehicle_license_plate': 'PCA 0001',
+  'orders': [stopJson(2, term: 'credit', loaded: '2'), stopJson(1), stopJson(3, status: 'delivered'), stopJson(4, status: 'awaiting_payment')],
+};
 
 OutboxData depart({String status = OutboxStatus.pending, String? message}) => OutboxData(
-      id: 1,
-      clientReference: 'M001:salida',
-      type: 'delivery.depart',
-      payload: jsonEncode({'delivery_run_id': 'run1'}),
-      status: status,
-      summary: 'Jornada RUT-2026-000013',
-      attempts: 0,
-      createdAt: DateTime(2026, 10, 15, 7),
-      message: message,
-    );
+  id: 1,
+  clientReference: 'M001:salida',
+  type: 'delivery.depart',
+  payload: jsonEncode({'delivery_run_id': 'run1'}),
+  status: status,
+  summary: 'Jornada RUT-2026-000013',
+  attempts: 0,
+  createdAt: DateTime(2026, 10, 15, 7),
+  message: message,
+);
 
 class MemorySecureStore extends SecureStore {
   MemorySecureStore(this.current);
@@ -67,6 +71,7 @@ class MemorySecureStore extends SecureStore {
 
 void main() {
   setUpAll(() => initializeDateFormatting('es'));
+  stopAndDashboardTests();
 
   test('the run on the phone: stops in order, contacts attached, and a departure still to send counts as left', () {
     final runs = mergeDeliveryRuns(
@@ -92,7 +97,12 @@ void main() {
     expect(left.hasLeft, isTrue);
     expect(left.statusLabel, 'En ruta');
 
-    final rejected = mergeDeliveryRuns(records: [runJson()], outbox: [depart(status: OutboxStatus.rejected, message: 'Solo una jornada cargada puede iniciar la ruta.')], customers: const [], pulledAt: null).single;
+    final rejected = mergeDeliveryRuns(
+      records: [runJson()],
+      outbox: [depart(status: OutboxStatus.rejected, message: 'Solo una jornada cargada puede iniciar la ruta.')],
+      customers: const [],
+      pulledAt: null,
+    ).single;
     expect(rejected.hasLeft, isFalse);
     expect(rejected.departureRejection, contains('jornada cargada'));
   });
@@ -105,22 +115,27 @@ void main() {
     addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
 
     final db = AppDatabase(NativeDatabase.memory());
-    final container = ProviderContainer(overrides: [
-      databaseProvider.overrideWithValue(db),
-      secureStoreProvider.overrideWithValue(MemorySecureStore(Session(
-        serverUrl: 'http://test',
-        token: 't',
-        user: const {'id': 4, 'name': 'Repartidor', 'role': 'repartidor'},
-        device: const {'code': 'M004'},
-        abilities: const ['deliveries:execute'],
-      ))),
-      apiProvider.overrideWithValue(null),
-      localRecordsProvider('delivery_runs').overrideWith((ref) => Stream.value([runJson()])),
-      localRecordsProvider('customers').overrideWith((ref) => Stream.value(const [])),
-    ]);
+    final container = ProviderContainer(
+      overrides: [
+        databaseProvider.overrideWithValue(db),
+        secureStoreProvider.overrideWithValue(
+          MemorySecureStore(
+            Session(serverUrl: 'http://test', token: 't', user: const {'id': 4, 'name': 'Repartidor', 'role': 'repartidor'}, device: const {'code': 'M004'}, abilities: const ['deliveries:execute']),
+          ),
+        ),
+        apiProvider.overrideWithValue(null),
+        localRecordsProvider('delivery_runs').overrideWith((ref) => Stream.value([runJson()])),
+        localRecordsProvider('customers').overrideWith((ref) => Stream.value(const [])),
+      ],
+    );
     await tester.runAsync(() => container.read(sessionProvider.future));
 
-    await tester.pumpWidget(UncontrolledProviderScope(container: container, child: const MaterialApp(home: DeliveryRunScreen())));
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: const MaterialApp(home: DeliveryRunScreen()),
+      ),
+    );
     await tester.pumpAndSettle();
 
     expect(tester.takeException(), isNull);
@@ -154,12 +169,12 @@ void main() {
 
   test('only runs that need the driver show, today first and then the newest', () {
     Map<String, dynamic> run(String id, String date, {String status = 'in_transit', bool finished = false}) => {
-          ...runJson(status: status),
-          'id': id,
-          'run_number': 'RUT-$id',
-          'scheduled_date': date,
-          'orders': [stopJson(1, status: finished ? 'delivered' : 'loaded')],
-        };
+      ...runJson(status: status),
+      'id': id,
+      'run_number': 'RUT-$id',
+      'scheduled_date': date,
+      'orders': [stopJson(1, status: finished ? 'delivered' : 'loaded')],
+    };
     final runs = mergeDeliveryRuns(
       records: [
         run('viejo', '2026-10-12'),
@@ -184,21 +199,31 @@ void main() {
     addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
     final today = DateTime.now();
     String day(int back) => today.subtract(Duration(days: back)).toIso8601String().substring(0, 10);
-    await tester.pumpWidget(ProviderScope(
-      overrides: [
-        outboxRowsProvider.overrideWith((ref) => Stream.value(const <OutboxData>[])),
-        syncStateProvider('pulled_at:delivery_runs').overrideWith((ref) => Stream.value(null)),
-        secureStoreProvider.overrideWithValue(MemorySecureStore(null)),
-        apiProvider.overrideWithValue(null),
-        localRecordsProvider('delivery_runs').overrideWith((ref) => Stream.value([
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          outboxRowsProvider.overrideWith((ref) => Stream.value(const <OutboxData>[])),
+          syncStateProvider('pulled_at:delivery_runs').overrideWith((ref) => Stream.value(null)),
+          secureStoreProvider.overrideWithValue(MemorySecureStore(null)),
+          apiProvider.overrideWithValue(null),
+          localRecordsProvider('delivery_runs').overrideWith(
+            (ref) => Stream.value([
               {...runJson(status: 'in_transit'), 'id': 'a', 'run_number': 'RUT-VIEJA', 'scheduled_date': day(3)},
               {...runJson(), 'id': 'b', 'run_number': 'RUT-HOY', 'scheduled_date': day(0)},
-              {...runJson(status: 'awaiting_settlement'), 'id': 'c', 'run_number': 'RUT-LISTA', 'scheduled_date': day(5), 'orders': [stopJson(1, status: 'delivered')]},
-            ])),
-        localRecordsProvider('customers').overrideWith((ref) => Stream.value(const [])),
-      ],
-      child: const MaterialApp(home: DeliveryRunScreen()),
-    ));
+              {
+                ...runJson(status: 'awaiting_settlement'),
+                'id': 'c',
+                'run_number': 'RUT-LISTA',
+                'scheduled_date': day(5),
+                'orders': [stopJson(1, status: 'delivered')],
+              },
+            ]),
+          ),
+          localRecordsProvider('customers').overrideWith((ref) => Stream.value(const [])),
+        ],
+        child: const MaterialApp(home: DeliveryRunScreen()),
+      ),
+    );
     await tester.pumpAndSettle();
 
     expect(tester.takeException(), isNull);
@@ -207,7 +232,6 @@ void main() {
     expect(find.text('Jornada RUT-LISTA'), findsNothing);
     expect(find.text('1 jornada terminada espera la liquidación del supervisor.'), findsOneWidget);
     expect(find.byType(DeliveryStopCard), findsNothing, reason: 'stops of different runs are never mixed');
-
   });
 
   test('a stop is finished only when delivered and paid, partially delivered or not delivered', () {
@@ -217,5 +241,85 @@ void main() {
     for (final status in ['delivered', 'partially_delivered', 'not_delivered']) {
       expect(stop(status).progress, StopProgress.done);
     }
+  });
+}
+
+void stopAndDashboardTests() {
+  List<Override> driverOverrides({List<Map<String, dynamic>>? runs}) => [
+    outboxRowsProvider.overrideWith((ref) => Stream.value(const <OutboxData>[])),
+    syncStateProvider('pulled_at:delivery_runs').overrideWith((ref) => Stream.value(null)),
+    secureStoreProvider.overrideWithValue(MemorySecureStore(null)),
+    apiProvider.overrideWithValue(null),
+    localRecordsProvider('delivery_runs').overrideWith((ref) => Stream.value(runs ?? [runJson(status: 'in_transit')])),
+    localRecordsProvider('customers').overrideWith(
+      (ref) => Stream.value([
+        {'id': 'c2', 'code': 'CAMPO-02', 'business_name': 'Pulpería', 'address': 'Centro', 'phone': '9999-0002', 'reference': 'Frente a la iglesia', 'contact_name': 'Doña Marta'},
+      ]),
+    ),
+    customerBalancesProvider.overrideWithValue({
+      'c2': CustomerBalance(allowsCredit: true, limit: DecimalValue.parse('100'), outstanding: DecimalValue.parse('80'), overdue: DecimalValue.parse('30'), available: DecimalValue.parse('20')),
+    }),
+  ];
+
+  Future<void> phone(WidgetTester tester) async {
+    tester.view.physicalSize = const Size(384 * 3, 820 * 3);
+    tester.view.devicePixelRatio = 3;
+    tester.platformDispatcher.textScaleFactorTestValue = 1.1;
+    addTearDown(tester.view.reset);
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+  }
+
+  testWidgets('the stop shows how to reach the customer, how it is paid and what was loaded', (tester) async {
+    await phone(tester);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: driverOverrides(),
+        child: const MaterialApp(
+          home: DeliveryStopScreen(runId: 'run1', stopId: 'ro2'),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    expect(find.text('Parada 2 de 4'), findsOneWidget);
+    expect(find.text('Frente a la iglesia'), findsOneWidget);
+    expect(find.text('Contacto: Doña Marta'), findsOneWidget);
+    expect(find.text('Crédito'), findsOneWidget);
+    expect(find.textContaining('supera el crédito disponible'), findsOneWidget, reason: '36 loaded against 20 available');
+    expect(find.textContaining('vencido'), findsOneWidget);
+    expect(find.text('Pedido 3, cargado 2'), findsOneWidget);
+    expect(find.text('L 36.00'), findsWidgets);
+  });
+
+  testWidgets('the driver home leads with the stops left and the next stop', (tester) async {
+    await phone(tester);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: driverOverrides(
+          runs: [
+            {
+              ...runJson(status: 'in_transit'),
+              'scheduled_date': DateTime.now().toIso8601String().substring(0, 10),
+              'financials': {'cash_expected': '54.0000', 'credit_total': '0.0000'},
+            },
+          ],
+        ),
+        child: const MaterialApp(
+          home: Scaffold(body: SingleChildScrollView(child: DriverDashboard())),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    expect(find.text('3'), findsOneWidget, reason: 'the hero figure: stops left');
+    expect(find.text('paradas por entregar'), findsOneWidget);
+    expect(find.text('1 de 4 terminadas'), findsOneWidget);
+    expect(find.text('Continuar ruta'), findsOneWidget);
+    expect(find.text('Cobrado'), findsOneWidget);
+    expect(find.text('Por cobrar'), findsOneWidget);
+    expect(find.text('Siguiente parada'), findsOneWidget);
+    expect(find.textContaining('número 4'), findsOneWidget, reason: 'a stop delivered but not paid comes before the rest');
   });
 }

@@ -47,11 +47,7 @@ class DeliveryRunScreen extends ConsumerWidget {
                 if (toWork.isEmpty)
                   const Padding(
                     padding: EdgeInsets.only(top: 80),
-                    child: _Message(
-                      icon: Icons.local_shipping_outlined,
-                      title: 'No tienes jornadas por entregar',
-                      detail: 'Cuando la bodega cargue tu camión, desliza hacia abajo para sincronizar.',
-                    ),
+                    child: _Message(icon: Icons.local_shipping_outlined, title: 'No tienes jornadas por entregar', detail: 'Cuando la bodega cargue tu camión, desliza hacia abajo para sincronizar.'),
                   )
                 else ...[
                   Text('Tienes ${toWork.length} jornadas sin terminar', style: const TextStyle(color: AppColors.muted)),
@@ -108,15 +104,11 @@ class _RunScaffold extends ConsumerWidget {
             const SizedBox(height: 12),
             if (!run.hasLeft) ...[_DepartButton(run: run), const SizedBox(height: 16)],
             if (pending.isEmpty)
-              const _Message(
-                icon: Icons.emoji_events_outlined,
-                title: 'Terminaste todas las paradas',
-                detail: 'Entrega el efectivo y la mercadería devuelta al supervisor.',
-              )
+              const _Message(icon: Icons.emoji_events_outlined, title: 'Terminaste todas las paradas', detail: 'Entrega el efectivo y la mercadería devuelta al supervisor.')
             else ...[
               Text(run.hasLeft ? 'Por entregar (${pending.length})' : 'Paradas (${pending.length})', style: const TextStyle(fontWeight: FontWeight.w700)),
               const SizedBox(height: 8),
-              for (final stop in pending) DeliveryStopCard(stop: stop),
+              for (final stop in pending) DeliveryStopCard(stop: stop, onTap: () => context.push('/deliveries/${run.id}/stops/${stop.id}')),
             ],
             if (waitingSettlement > 0) _SettlementNote(count: waitingSettlement),
           ],
@@ -156,20 +148,30 @@ class _RunTile extends StatelessWidget {
         onTap: () => context.push('/deliveries/${run.id}'),
         child: Padding(
           padding: const EdgeInsets.fromLTRB(16, 14, 8, 14),
-          child: Row(children: [
-            Expanded(
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text('Jornada ${run.runNumber}', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
-                Text(_dayLabel(run.scheduledDate), style: const TextStyle(color: AppColors.muted)),
-                const SizedBox(height: 6),
-                Wrap(spacing: 8, runSpacing: 4, crossAxisAlignment: WrapCrossAlignment.center, children: [
-                  StatusChip(text: run.statusLabel, color: run.hasLeft ? AppColors.brand : AppColors.amber),
-                  Text(run.hasLeft ? 'Faltan $pending de ${run.stops.length} paradas' : '${run.stops.length} paradas', style: const TextStyle(fontWeight: FontWeight.w600)),
-                ]),
-              ]),
-            ),
-            const Icon(Icons.chevron_right, color: AppColors.muted),
-          ]),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Jornada ${run.runNumber}', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
+                    Text(_dayLabel(run.scheduledDate), style: const TextStyle(color: AppColors.muted)),
+                    const SizedBox(height: 6),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 4,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        StatusChip(text: run.statusLabel, color: run.hasLeft ? AppColors.brand : AppColors.amber),
+                        Text(run.hasLeft ? 'Faltan $pending de ${run.stops.length} paradas' : '${run.stops.length} paradas', style: const TextStyle(fontWeight: FontWeight.w600)),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(Icons.chevron_right, color: AppColors.muted),
+            ],
+          ),
         ),
       ),
     );
@@ -183,13 +185,13 @@ class _SettlementNote extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.only(top: 16),
-        child: Text(
-          count == 1 ? '1 jornada terminada espera la liquidación del supervisor.' : '$count jornadas terminadas esperan la liquidación del supervisor.',
-          textAlign: TextAlign.center,
-          style: const TextStyle(fontSize: 12, color: AppColors.muted),
-        ),
-      );
+    padding: const EdgeInsets.only(top: 16),
+    child: Text(
+      count == 1 ? '1 jornada terminada espera la liquidación del supervisor.' : '$count jornadas terminadas esperan la liquidación del supervisor.',
+      textAlign: TextAlign.center,
+      style: const TextStyle(fontSize: 12, color: AppColors.muted),
+    ),
+  );
 }
 
 class _RunSummary extends StatelessWidget {
@@ -204,36 +206,43 @@ class _RunSummary extends StatelessWidget {
     return Card(
       child: Padding(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(run.runNumber, style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
-          Text(
-            [_dayLabel(run.scheduledDate), if (run.vehicleCode != null) 'Camión ${run.vehicleCode}'].where((part) => part.isNotEmpty).join(' · '),
-            style: const TextStyle(color: AppColors.muted),
-          ),
-          const SizedBox(height: 8),
-          StatusChip(text: run.statusLabel, color: run.hasLeft ? AppColors.brand : AppColors.amber, outlined: run.departurePending),
-          const SizedBox(height: 14),
-          ClipRRect(borderRadius: BorderRadius.circular(8), child: LinearProgressIndicator(value: run.progress, minHeight: 8)),
-          const SizedBox(height: 6),
-          Row(children: [
-            Expanded(child: Text('$done de ${run.stops.length} entregas terminadas', style: const TextStyle(fontWeight: FontWeight.w600))),
-            if (done > 0)
-              TextButton(
-                style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
-                onPressed: () => context.push('/deliveries/${run.id}/done'),
-                child: const Text('Ver'),
-              ),
-          ]),
-          if (run.hasLeft) Text('Cobrado ${money(run.collectedTotal)} de ${money(run.loadedTotal)}', style: const TextStyle(color: AppColors.muted)),
-          if (run.departurePending) const _Note('Salida guardada en el teléfono; se enviará cuando haya señal.', AppColors.amber),
-          if (run.departureRejection != null) _Note(run.departureRejection!, AppColors.danger),
-          if (!run.hasLeft && shortStops > 0)
-            _Note(
-              shortStops == 1 ? 'A 1 parada le falta mercadería: la bodega cargó menos de lo pedido.' : 'A $shortStops paradas les falta mercadería: la bodega cargó menos de lo pedido.',
-              AppColors.amber,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(run.runNumber, style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
+            Text([_dayLabel(run.scheduledDate), if (run.vehicleCode != null) 'Camión ${run.vehicleCode}'].where((part) => part.isNotEmpty).join(' · '), style: const TextStyle(color: AppColors.muted)),
+            const SizedBox(height: 8),
+            StatusChip(text: run.statusLabel, color: run.hasLeft ? AppColors.brand : AppColors.amber, outlined: run.departurePending),
+            const SizedBox(height: 14),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: LinearProgressIndicator(value: run.progress, minHeight: 8),
             ),
-          const SizedBox(height: 8),
-        ]),
+            const SizedBox(height: 6),
+            Row(
+              children: [
+                Expanded(
+                  child: Text('$done de ${run.stops.length} entregas terminadas', style: const TextStyle(fontWeight: FontWeight.w600)),
+                ),
+                if (done > 0)
+                  TextButton(
+                    style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
+                    onPressed: () => context.push('/deliveries/${run.id}/done'),
+                    child: const Text('Ver'),
+                  ),
+              ],
+            ),
+            if (run.hasLeft) Text('Cobrado ${money(run.collectedTotal)} de ${money(run.loadedTotal)}', style: const TextStyle(color: AppColors.muted)),
+            if (run.departurePending) const _Note('Salida guardada en el teléfono; se enviará cuando haya señal.', AppColors.amber),
+            if (run.departureRejection != null) _Note(run.departureRejection!, AppColors.danger),
+            if (!run.hasLeft && shortStops > 0)
+              _Note(
+                shortStops == 1 ? 'A 1 parada le falta mercadería: la bodega cargó menos de lo pedido.' : 'A $shortStops paradas les falta mercadería: la bodega cargó menos de lo pedido.',
+                AppColors.amber,
+              ),
+            const SizedBox(height: 8),
+          ],
+        ),
       ),
     );
   }
@@ -247,9 +256,9 @@ class _Note extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.only(top: 8),
-        child: Text(text, style: TextStyle(fontSize: 12, color: color)),
-      );
+    padding: const EdgeInsets.only(top: 8),
+    child: Text(text, style: TextStyle(fontSize: 12, color: color)),
+  );
 }
 
 class _DepartButton extends ConsumerStatefulWidget {
@@ -290,18 +299,19 @@ class _DepartButtonState extends ConsumerState<_DepartButton> {
 
   @override
   Widget build(BuildContext context) => FilledButton.icon(
-        style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(50)),
-        onPressed: _saving ? null : _depart,
-        icon: _saving ? const SizedBox.square(dimension: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.local_shipping),
-        label: const Text('Salir a ruta'),
-      );
+    style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(50)),
+    onPressed: _saving ? null : _depart,
+    icon: _saving ? const SizedBox.square(dimension: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.local_shipping),
+    label: const Text('Salir a ruta'),
+  );
 }
 
 /// A stop of the run in a list: who, what goes, how it is paid and anything to watch for.
 class DeliveryStopCard extends StatelessWidget {
-  const DeliveryStopCard({super.key, required this.stop});
+  const DeliveryStopCard({super.key, required this.stop, this.onTap});
 
   final LocalDeliveryStop stop;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -320,57 +330,79 @@ class DeliveryStopCard extends StatelessWidget {
     return Card(
       margin: const EdgeInsets.only(bottom: 10),
       clipBehavior: Clip.antiAlias,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(14, 12, 6, 4),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            CircleAvatar(
-              radius: 15,
-              backgroundColor: const Color(0xFFF1F1EF),
-              child: Text('${stop.visitOrder}', style: const TextStyle(fontWeight: FontWeight.w700, color: AppColors.ink)),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(stop.customerName, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
-                Text(stop.customerAddress, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: AppColors.muted)),
-                const SizedBox(height: 4),
-                Text(
-                  '${stop.items.length} ${stop.items.length == 1 ? 'producto' : 'productos'} · ${money(stop.loadedTotal)}',
-                  style: const TextStyle(fontWeight: FontWeight.w600),
-                ),
-              ]),
-            ),
-          ]),
-          if (chips.isNotEmpty) ...[
-            const SizedBox(height: 8),
-            Padding(padding: const EdgeInsets.only(left: 42), child: Wrap(spacing: 6, runSpacing: 6, children: chips)),
-          ],
-          if (stop.rejectionMessage != null)
-            Padding(
-              padding: const EdgeInsets.only(left: 42, top: 6),
-              child: Text(stop.rejectionMessage!, style: const TextStyle(color: AppColors.danger, fontSize: 13)),
-            ),
-          Padding(
-            padding: const EdgeInsets.only(left: 30),
-            child: Row(children: [
-              if (phone != null) IconButton(tooltip: 'Llamar', icon: const Icon(Icons.call_outlined), onPressed: () => _open(context, ExternalApps.call(phone))),
-              if (whatsapp != null) IconButton(tooltip: 'WhatsApp', icon: const Icon(Icons.chat_outlined), onPressed: () => _open(context, ExternalApps.whatsapp(whatsapp))),
-              IconButton(
-                tooltip: 'Abrir ubicación',
-                icon: const Icon(Icons.place_outlined),
-                onPressed: () => _open(
-                  context,
-                  ExternalApps.map(
-                    latitude: customer?.latitude,
-                    longitude: customer?.longitude,
-                    label: customer?.hasLocation ?? false ? stop.customerName : '${stop.customerAddress} ${stop.customerName}',
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(14, 12, 6, 4),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  CircleAvatar(
+                    radius: 15,
+                    backgroundColor: const Color(0xFFF1F1EF),
+                    child: Text(
+                      '${stop.visitOrder}',
+                      style: const TextStyle(fontWeight: FontWeight.w700, color: AppColors.ink),
+                    ),
                   ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(stop.customerName, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
+                        Text(
+                          stop.customerAddress,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(color: AppColors.muted),
+                        ),
+                        const SizedBox(height: 4),
+                        Text('${stop.items.length} ${stop.items.length == 1 ? 'producto' : 'productos'} · ${money(stop.loadedTotal)}', style: const TextStyle(fontWeight: FontWeight.w600)),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              if (chips.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Padding(
+                  padding: const EdgeInsets.only(left: 42),
+                  child: Wrap(spacing: 6, runSpacing: 6, children: chips),
+                ),
+              ],
+              if (stop.rejectionMessage != null)
+                Padding(
+                  padding: const EdgeInsets.only(left: 42, top: 6),
+                  child: Text(stop.rejectionMessage!, style: const TextStyle(color: AppColors.danger, fontSize: 13)),
+                ),
+              Padding(
+                padding: const EdgeInsets.only(left: 30),
+                child: Row(
+                  children: [
+                    if (phone != null) IconButton(tooltip: 'Llamar', icon: const Icon(Icons.call_outlined), onPressed: () => _open(context, ExternalApps.call(phone))),
+                    if (whatsapp != null) IconButton(tooltip: 'WhatsApp', icon: const Icon(Icons.chat_outlined), onPressed: () => _open(context, ExternalApps.whatsapp(whatsapp))),
+                    IconButton(
+                      tooltip: 'Abrir ubicación',
+                      icon: const Icon(Icons.place_outlined),
+                      onPressed: () => _open(
+                        context,
+                        ExternalApps.map(
+                          latitude: customer?.latitude,
+                          longitude: customer?.longitude,
+                          label: customer?.hasLocation ?? false ? stop.customerName : '${stop.customerAddress} ${stop.customerName}',
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
-            ]),
+            ],
           ),
-        ]),
+        ),
       ),
     );
   }
@@ -395,8 +427,13 @@ class DoneStopsScreen extends ConsumerWidget {
     return Scaffold(
       appBar: AppBar(title: Text('Entregas terminadas (${done.length})')),
       body: done.isEmpty
-          ? const Center(child: Text('Todavía no terminas ninguna parada.', style: TextStyle(color: AppColors.muted)))
-          : ListView(padding: const EdgeInsets.fromLTRB(16, 8, 16, 32), children: [for (final stop in done) DeliveryStopCard(stop: stop)]),
+          ? const Center(
+              child: Text('Todavía no terminas ninguna parada.', style: TextStyle(color: AppColors.muted)),
+            )
+          : ListView(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+              children: [for (final stop in done) DeliveryStopCard(stop: stop, onTap: () => context.push('/deliveries/$runId/stops/${stop.id}'))],
+            ),
     );
   }
 }
@@ -410,13 +447,20 @@ class _Message extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          Icon(icon, size: 48, color: AppColors.muted),
-          const SizedBox(height: 12),
-          Text(title, textAlign: TextAlign.center, style: Theme.of(context).textTheme.titleMedium),
-          const SizedBox(height: 6),
-          Text(detail, textAlign: TextAlign.center, style: const TextStyle(color: AppColors.muted)),
-        ]),
-      );
+    padding: const EdgeInsets.all(32),
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 48, color: AppColors.muted),
+        const SizedBox(height: 12),
+        Text(title, textAlign: TextAlign.center, style: Theme.of(context).textTheme.titleMedium),
+        const SizedBox(height: 6),
+        Text(
+          detail,
+          textAlign: TextAlign.center,
+          style: const TextStyle(color: AppColors.muted),
+        ),
+      ],
+    ),
+  );
 }

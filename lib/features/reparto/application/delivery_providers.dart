@@ -16,17 +16,12 @@ final deliveryRunsProvider = Provider<AsyncValue<List<LocalDeliveryRun>>>((ref) 
   final error = records.error ?? outbox.error ?? pulledAt.error;
   if (error != null) return AsyncError(error, StackTrace.current);
 
-  return AsyncData(mergeDeliveryRuns(
-    records: records.requireValue,
-    outbox: outbox.requireValue,
-    customers: customers,
-    pulledAt: pulledAt.requireValue == null ? null : DateTime.tryParse(pulledAt.requireValue!),
-  ));
+  return AsyncData(
+    mergeDeliveryRuns(records: records.requireValue, outbox: outbox.requireValue, customers: customers, pulledAt: pulledAt.requireValue == null ? null : DateTime.tryParse(pulledAt.requireValue!)),
+  );
 });
 
-final deliveryRunProvider = Provider.family<LocalDeliveryRun?, String>(
-  (ref, runId) => ref.watch(deliveryRunsProvider).value?.where((run) => run.id == runId).firstOrNull,
-);
+final deliveryRunProvider = Provider.family<LocalDeliveryRun?, String>((ref, runId) => ref.watch(deliveryRunsProvider).value?.where((run) => run.id == runId).firstOrNull);
 
 /// Records the driver's facts: first on the phone, then sent if there is signal.
 class DeliveryActions {
@@ -41,7 +36,9 @@ class DeliveryActions {
     if (run.hasLeft) return;
     final at = DateTime.now();
     final position = await location.take();
-    await _ref.read(outboxProvider).enqueue(
+    await _ref
+        .read(outboxProvider)
+        .enqueue(
           deviceCode: session.deviceCode,
           type: 'delivery.depart',
           summary: 'Jornada ${run.runNumber}',

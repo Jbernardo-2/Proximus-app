@@ -12,25 +12,17 @@ String? _text(Object? value) {
 
 /// A product loaded for a stop, as the warehouse loaded it.
 final class LocalDeliveryItem {
-  const LocalDeliveryItem({
-    required this.id,
-    required this.productName,
-    required this.presentationName,
-    required this.unitPrice,
-    required this.requested,
-    required this.loaded,
-    this.productId,
-  });
+  const LocalDeliveryItem({required this.id, required this.productName, required this.presentationName, required this.unitPrice, required this.requested, required this.loaded, this.productId});
 
   factory LocalDeliveryItem.fromJson(Map<String, dynamic> json) => LocalDeliveryItem(
-        id: json['id'].toString(),
-        productId: json['product_id']?.toString(),
-        productName: json['product_name']?.toString() ?? '',
-        presentationName: json['presentation_name']?.toString() ?? '',
-        unitPrice: _decimal(json['unit_price']),
-        requested: _decimal(json['requested_quantity']),
-        loaded: _decimal(json['loaded_quantity']),
-      );
+    id: json['id'].toString(),
+    productId: json['product_id']?.toString(),
+    productName: json['product_name']?.toString() ?? '',
+    presentationName: json['presentation_name']?.toString() ?? '',
+    unitPrice: _decimal(json['unit_price']),
+    requested: _decimal(json['requested_quantity']),
+    loaded: _decimal(json['loaded_quantity']),
+  );
 
   final String id;
   final String? productId;
@@ -129,31 +121,31 @@ final class LocalDeliveryStop {
   bool get hasShortItems => items.any((item) => item.isShort);
 
   StopProgress get progress => switch (status) {
-        'awaiting_payment' => StopProgress.awaitingPayment,
-        'delivered' || 'partially_delivered' || 'not_delivered' || 'cancelled' => StopProgress.done,
-        _ => StopProgress.pending,
-      };
+    'awaiting_payment' => StopProgress.awaitingPayment,
+    'delivered' || 'partially_delivered' || 'not_delivered' || 'cancelled' => StopProgress.done,
+    _ => StopProgress.pending,
+  };
 
   LocalDeliveryStop copyWith({LocalCustomer? customer, LocalOperationState? operationState, String? rejectionMessage}) => LocalDeliveryStop(
-        id: id,
-        visitOrder: visitOrder,
-        status: status,
-        statusLabel: statusLabel,
-        outcomeStatus: outcomeStatus,
-        orderId: orderId,
-        orderNumber: orderNumber,
-        customerId: customerId,
-        customerName: customerName,
-        customerAddress: customerAddress,
-        paymentTerm: paymentTerm,
-        items: items,
-        deliveredTotal: deliveredTotal,
-        collectedTotal: collectedTotal,
-        balanceDue: balanceDue,
-        operationState: operationState ?? this.operationState,
-        customer: customer ?? this.customer,
-        rejectionMessage: rejectionMessage ?? this.rejectionMessage,
-      );
+    id: id,
+    visitOrder: visitOrder,
+    status: status,
+    statusLabel: statusLabel,
+    outcomeStatus: outcomeStatus,
+    orderId: orderId,
+    orderNumber: orderNumber,
+    customerId: customerId,
+    customerName: customerName,
+    customerAddress: customerAddress,
+    paymentTerm: paymentTerm,
+    items: items,
+    deliveredTotal: deliveredTotal,
+    collectedTotal: collectedTotal,
+    balanceDue: balanceDue,
+    operationState: operationState ?? this.operationState,
+    customer: customer ?? this.customer,
+    rejectionMessage: rejectionMessage ?? this.rejectionMessage,
+  );
 }
 
 /// A run of the driver: the truck, its stops and whether it already left.
@@ -170,20 +162,23 @@ final class LocalDeliveryRun {
     this.departedAt,
     this.departurePending = false,
     this.departureRejection,
+    this.cashCollected,
+    this.creditGranted,
   });
 
   factory LocalDeliveryRun.fromJson(Map<String, dynamic> json) => LocalDeliveryRun(
-        id: json['id'].toString(),
-        runNumber: json['run_number']?.toString() ?? '',
-        status: json['status']?.toString() ?? 'loaded',
-        scheduledDate: _date(json['scheduled_date']),
-        vehicleCode: _text(json['vehicle_code']),
-        licensePlate: _text(json['vehicle_license_plate']),
-        warehouseName: _text(json['warehouse_name']),
-        departedAt: _date(json['departed_at']),
-        stops: [for (final stop in (json['orders'] as List? ?? const []).cast<Map>()) LocalDeliveryStop.fromJson(stop.cast<String, dynamic>())]
-          ..sort((a, b) => a.visitOrder.compareTo(b.visitOrder)),
-      );
+    cashCollected: _decimal((json['financials'] as Map?)?['cash_expected']),
+    creditGranted: _decimal((json['financials'] as Map?)?['credit_total']),
+    id: json['id'].toString(),
+    runNumber: json['run_number']?.toString() ?? '',
+    status: json['status']?.toString() ?? 'loaded',
+    scheduledDate: _date(json['scheduled_date']),
+    vehicleCode: _text(json['vehicle_code']),
+    licensePlate: _text(json['vehicle_license_plate']),
+    warehouseName: _text(json['warehouse_name']),
+    departedAt: _date(json['departed_at']),
+    stops: [for (final stop in (json['orders'] as List? ?? const []).cast<Map>()) LocalDeliveryStop.fromJson(stop.cast<String, dynamic>())]..sort((a, b) => a.visitOrder.compareTo(b.visitOrder)),
+  );
 
   final String id;
   final String runNumber;
@@ -197,6 +192,10 @@ final class LocalDeliveryRun {
   final DateTime? departedAt;
   final List<LocalDeliveryStop> stops;
 
+  /// Cash the driver carries for this run and credit given, as the server last added them up.
+  final DecimalValue? cashCollected;
+  final DecimalValue? creditGranted;
+
   /// The driver tapped "Salir" and it has not reached the server yet.
   final bool departurePending;
   final String? departureRejection;
@@ -205,33 +204,48 @@ final class LocalDeliveryRun {
   bool get hasLeft => status != 'loaded' || departurePending;
 
   String get statusLabel => switch (status) {
-        'loaded' => departurePending ? 'En ruta' : 'Cargada, sin salir',
-        'in_transit' => 'En ruta',
-        'awaiting_settlement' => 'Por liquidar',
-        _ => status,
-      };
+    'loaded' => departurePending ? 'En ruta' : 'Cargada, sin salir',
+    'in_transit' => 'En ruta',
+    'awaiting_settlement' => 'Por liquidar',
+    _ => status,
+  };
 
   /// Still needs the driver: not out yet, or stops to deliver or collect. A run with
   /// every stop finished only waits for the supervisor to settle it.
   bool get needsDriver => !hasLeft || pendingStops.isNotEmpty;
 
-  List<LocalDeliveryStop> get pendingStops => [for (final stop in stops) if (stop.progress != StopProgress.done) stop];
-  List<LocalDeliveryStop> get doneStops => [for (final stop in stops) if (stop.progress == StopProgress.done) stop];
+  List<LocalDeliveryStop> get pendingStops => [
+    for (final stop in stops)
+      if (stop.progress != StopProgress.done) stop,
+  ];
+
+  /// Where to go now: a stop left half done (delivered, not paid) first, then the next in order.
+  LocalDeliveryStop? get nextStop {
+    final pending = pendingStops;
+    return pending.where((stop) => stop.progress == StopProgress.awaitingPayment).firstOrNull ?? pending.firstOrNull;
+  }
+
+  List<LocalDeliveryStop> get doneStops => [
+    for (final stop in stops)
+      if (stop.progress == StopProgress.done) stop,
+  ];
   DecimalValue get loadedTotal => stops.fold(DecimalValue.zero, (total, stop) => total + stop.loadedTotal);
   DecimalValue get collectedTotal => stops.fold(DecimalValue.zero, (total, stop) => total + stop.collectedTotal);
   double get progress => stops.isEmpty ? 0 : doneStops.length / stops.length;
 
   LocalDeliveryRun copyWith({List<LocalDeliveryStop>? stops, bool? departurePending, String? departureRejection}) => LocalDeliveryRun(
-        id: id,
-        runNumber: runNumber,
-        status: status,
-        scheduledDate: scheduledDate,
-        vehicleCode: vehicleCode,
-        licensePlate: licensePlate,
-        warehouseName: warehouseName,
-        departedAt: departedAt,
-        stops: stops ?? this.stops,
-        departurePending: departurePending ?? this.departurePending,
-        departureRejection: departureRejection ?? this.departureRejection,
-      );
+    id: id,
+    runNumber: runNumber,
+    status: status,
+    scheduledDate: scheduledDate,
+    vehicleCode: vehicleCode,
+    licensePlate: licensePlate,
+    warehouseName: warehouseName,
+    departedAt: departedAt,
+    stops: stops ?? this.stops,
+    departurePending: departurePending ?? this.departurePending,
+    departureRejection: departureRejection ?? this.departureRejection,
+    cashCollected: cashCollected,
+    creditGranted: creditGranted,
+  );
 }
