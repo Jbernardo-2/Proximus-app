@@ -6,6 +6,7 @@ import 'package:printing/printing.dart';
 import '../../../app/theme.dart';
 import '../../../core/formatting.dart';
 import '../documents/payment_receipt.dart';
+import '../../sync/operation_status_banner.dart';
 
 /// The receipt just issued (or reprinted): print it as a ticket or letter, share it, or finish.
 class ReceiptScreen extends StatelessWidget {
@@ -42,13 +43,7 @@ class ReceiptScreen extends StatelessWidget {
         body: ListView(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
           children: [
-            if (justIssued)
-              Container(
-                padding: const EdgeInsets.all(12),
-                margin: const EdgeInsets.only(bottom: 12),
-                decoration: BoxDecoration(color: const Color(0xFFE7F5EF), borderRadius: BorderRadius.circular(12)),
-                child: const Text('Abono guardado en el teléfono. Se enviará al servidor en cuanto haya señal.', style: TextStyle(color: AppColors.brand)),
-              ),
+            OperationStatusBanner(type: 'customer.payment', field: 'receipt_number', value: receipt.number, noun: 'este abono'),
             Card(
               child: Padding(
                 padding: const EdgeInsets.all(16),

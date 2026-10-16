@@ -7,6 +7,7 @@ import '../../../app/theme.dart';
 import '../../../core/formatting.dart';
 import '../../preventa/documents/payment_receipt.dart' show ReceiptFormat;
 import '../documents/delivery_invoice.dart';
+import '../../sync/operation_status_banner.dart';
 
 /// The invoice just issued (or reprinted): print it as a ticket or letter, share it, or finish.
 class DeliveryInvoiceScreen extends StatelessWidget {
@@ -39,13 +40,7 @@ class DeliveryInvoiceScreen extends StatelessWidget {
     body: ListView(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
       children: [
-        if (justIssued)
-          Container(
-            padding: const EdgeInsets.all(12),
-            margin: const EdgeInsets.only(bottom: 12),
-            decoration: BoxDecoration(color: const Color(0xFFE7F5EF), borderRadius: BorderRadius.circular(12)),
-            child: const Text('Cobro guardado en el teléfono. Se enviará al servidor en cuanto haya señal.', style: TextStyle(color: AppColors.brand)),
-          ),
+        OperationStatusBanner(type: 'delivery.payment', field: 'invoice_number', value: invoice.number, noun: 'este cobro'),
         Card(
           child: Padding(
             padding: const EdgeInsets.all(16),

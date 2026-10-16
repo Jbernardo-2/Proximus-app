@@ -76,6 +76,8 @@ final _routerProvider = Provider<GoRouter>((ref) {
   );
 });
 
+final _messenger = GlobalKey<ScaffoldMessengerState>();
+
 class ProximusApp extends ConsumerWidget {
   const ProximusApp({super.key});
 
@@ -84,8 +86,19 @@ class ProximusApp extends ConsumerWidget {
     if (ref.watch(sessionProvider).isLoading) {
       return MaterialApp(theme: buildTheme(), home: const Scaffold(body: Center(child: CircularProgressIndicator())));
     }
+    // A rejection is told right away, on whatever screen the user is, not found later in Actividad.
+    ref.listen(syncProvider.select((status) => status.lastReport), (previous, report) {
+      if (report == null || report.rejected == 0 || identical(previous, report)) return;
+      _messenger.currentState?.showSnackBar(SnackBar(
+        backgroundColor: AppColors.danger,
+        duration: const Duration(seconds: 8),
+        content: Text(report.rejected == 1 ? 'El servidor rechazó 1 operación.' : 'El servidor rechazó ${report.rejected} operaciones.'),
+        action: SnackBarAction(label: 'Ver', textColor: Colors.white, onPressed: () => ref.read(_routerProvider).go('/sync')),
+      ));
+    });
 
     return MaterialApp.router(
+      scaffoldMessengerKey: _messenger,
       title: 'Proximus',
       theme: buildTheme(),
       routerConfig: ref.watch(_routerProvider),
