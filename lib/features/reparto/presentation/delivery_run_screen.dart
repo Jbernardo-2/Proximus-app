@@ -12,6 +12,7 @@ import '../../preventa/presentation/daily_route_screen.dart' show StatusChip;
 import '../application/delivery_providers.dart';
 import '../data/delivery_models.dart';
 import '../data/delivery_repository.dart';
+import 'run_closing_screen.dart' show openRunClosing;
 
 final _day = DateFormat("EEEE d 'de' MMMM", 'es');
 
@@ -34,8 +35,11 @@ class DeliveryRunScreen extends ConsumerWidget {
       ),
       data: (runs) {
         final toWork = runsToWork(runs);
-        final waitingSettlement = runs.length - toWork.length;
-        if (toWork.length == 1) return _RunScaffold(run: toWork.single, waitingSettlement: waitingSettlement);
+        final finished = [
+          for (final run in runs)
+            if (!run.needsDriver) run,
+        ];
+        if (toWork.length == 1) return _RunScaffold(run: toWork.single, finished: finished);
 
         return Scaffold(
           appBar: AppBar(title: const Text('Mi jornada'), actions: const [_SyncButton()]),
@@ -54,7 +58,7 @@ class DeliveryRunScreen extends ConsumerWidget {
                   const SizedBox(height: 8),
                   for (final run in toWork) _RunTile(run: run),
                 ],
-                if (waitingSettlement > 0) _SettlementNote(count: waitingSettlement),
+                if (finished.isNotEmpty) _SettlementNote(runs: finished),
               ],
             ),
           ),
@@ -84,11 +88,13 @@ class DeliveryRunDetailScreen extends ConsumerWidget {
 }
 
 class _RunScaffold extends ConsumerWidget {
-  const _RunScaffold({required this.run, this.title = 'Mi jornada', this.waitingSettlement = 0});
+  const _RunScaffold({required this.run, this.title = 'Mi jornada', this.finished = const []});
 
   final LocalDeliveryRun run;
   final String title;
-  final int waitingSettlement;
+
+  /// Runs already finished, waiting for the supervisor: only their closing is left to see.
+  final List<LocalDeliveryRun> finished;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -103,14 +109,21 @@ class _RunScaffold extends ConsumerWidget {
             _RunSummary(run: run),
             const SizedBox(height: 12),
             if (!run.hasLeft) ...[_DepartButton(run: run), const SizedBox(height: 16)],
-            if (pending.isEmpty)
-              const _Message(icon: Icons.emoji_events_outlined, title: 'Terminaste todas las paradas', detail: 'Entrega el efectivo y la mercadería devuelta al supervisor.')
-            else ...[
+            if (pending.isEmpty) ...[
+              const _Message(icon: Icons.emoji_events_outlined, title: 'Terminaste todas las paradas', detail: 'Entrega el efectivo y la mercadería devuelta al supervisor.'),
+              FilledButton.icon(onPressed: () => openRunClosing(context, run), icon: const Icon(Icons.summarize_outlined), label: const Text('Ver cierre de jornada')),
+            ] else ...[
+              if (run.hasLeft) ...[
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton.icon(onPressed: () => openRunClosing(context, run), icon: const Icon(Icons.summarize_outlined, size: 18), label: const Text('Cierre preliminar')),
+                ),
+              ],
               Text(run.hasLeft ? 'Por entregar (${pending.length})' : 'Paradas (${pending.length})', style: const TextStyle(fontWeight: FontWeight.w700)),
               const SizedBox(height: 8),
               for (final stop in pending) DeliveryStopCard(stop: stop, onTap: () => context.push('/deliveries/${run.id}/stops/${stop.id}')),
             ],
-            if (waitingSettlement > 0) _SettlementNote(count: waitingSettlement),
+            if (finished.isNotEmpty) _SettlementNote(runs: finished),
           ],
         ),
       ),
@@ -178,18 +191,24 @@ class _RunTile extends StatelessWidget {
   }
 }
 
+/// Finished runs leave the screen; only a quiet line stays, to reach their closing.
 class _SettlementNote extends StatelessWidget {
-  const _SettlementNote({required this.count});
+  const _SettlementNote({required this.runs});
 
-  final int count;
+  final List<LocalDeliveryRun> runs;
 
   @override
   Widget build(BuildContext context) => Padding(
     padding: const EdgeInsets.only(top: 16),
-    child: Text(
-      count == 1 ? '1 jornada terminada espera la liquidación del supervisor.' : '$count jornadas terminadas esperan la liquidación del supervisor.',
-      textAlign: TextAlign.center,
-      style: const TextStyle(fontSize: 12, color: AppColors.muted),
+    child: Column(
+      children: [
+        Text(
+          runs.length == 1 ? '1 jornada terminada espera la liquidación del supervisor.' : '${runs.length} jornadas terminadas esperan la liquidación del supervisor.',
+          textAlign: TextAlign.center,
+          style: const TextStyle(fontSize: 12, color: AppColors.muted),
+        ),
+        for (final run in runs) TextButton(onPressed: () => openRunClosing(context, run), child: Text('Ver cierre de ${run.runNumber}')),
+      ],
     ),
   );
 }

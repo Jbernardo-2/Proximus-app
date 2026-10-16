@@ -115,6 +115,7 @@ final class LocalDeliveryStop {
     this.receiverName,
     this.outcomeReasonLabel,
     this.invoice,
+    this.payments = const [],
   });
 
   factory LocalDeliveryStop.fromJson(Map<String, dynamic> json) {
@@ -138,6 +139,10 @@ final class LocalDeliveryStop {
       operationState: LocalOperationState.synchronized,
       receiverName: _text(json['receiver_name']),
       outcomeReasonLabel: _text(json['outcome_reason_label']),
+      payments: [
+        for (final payment in (json['payments'] as List? ?? const []).cast<Map>())
+          if (payment['status'] != 'voided') (method: payment['method'].toString(), amount: _decimal(payment['amount'])),
+      ],
     );
   }
 
@@ -170,6 +175,12 @@ final class LocalDeliveryStop {
   /// The invoice issued on this phone for the stop, to reprint it (see DeliveryInvoice.fromJson).
   final Map<String, dynamic>? invoice;
 
+  /// What was collected for this delivery, by method (credit is not here: it stays as [balanceDue]).
+  final List<({String method, DecimalValue amount})> payments;
+
+  /// Credit given at a finished stop: what is left to pay.
+  DecimalValue get creditGranted => progress == StopProgress.done ? balanceDue : DecimalValue.zero;
+
   /// The delivery of this stop is recorded (on the server or on the phone).
   bool get hasOutcome => status != 'loaded';
 
@@ -197,6 +208,7 @@ final class LocalDeliveryStop {
     String? outcomeReasonLabel,
     DecimalValue? collectedTotal,
     Map<String, dynamic>? invoice,
+    List<({String method, DecimalValue amount})>? payments,
   }) => LocalDeliveryStop(
     id: id,
     visitOrder: visitOrder,
@@ -219,6 +231,7 @@ final class LocalDeliveryStop {
     receiverName: receiverName ?? this.receiverName,
     outcomeReasonLabel: outcomeReasonLabel ?? this.outcomeReasonLabel,
     invoice: invoice ?? this.invoice,
+    payments: payments ?? this.payments,
   );
 }
 

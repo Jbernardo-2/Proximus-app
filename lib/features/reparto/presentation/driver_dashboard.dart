@@ -8,9 +8,12 @@ import '../../../core/decimal_value.dart';
 import '../../../core/external_apps.dart';
 import '../../../core/formatting.dart';
 import '../../preventa/presentation/daily_route_screen.dart' show StatusChip;
+import '../../../app/providers.dart';
 import '../application/delivery_providers.dart';
 import '../data/delivery_models.dart';
 import '../data/delivery_repository.dart';
+import '../data/run_closing.dart';
+import 'run_closing_screen.dart' show openRunClosing;
 
 final _today = DateFormat("EEEE d 'de' MMMM", 'es');
 
@@ -29,7 +32,9 @@ class DriverDashboard extends ConsumerWidget {
       children: [
         Text(toBeginningOfSentenceCase(_today.format(DateTime.now())), style: const TextStyle(color: AppColors.muted)),
         const SizedBox(height: 10),
-        if (toWork.isEmpty)
+        if (toWork.isEmpty && runs.isNotEmpty)
+          _Finished(run: (runs.toList()..sort((a, b) => (b.scheduledDate ?? DateTime(0)).compareTo(a.scheduledDate ?? DateTime(0)))).first)
+        else if (toWork.isEmpty)
           const _Idle()
         else ...[
           _TodayCard(run: toWork.first),
@@ -74,6 +79,39 @@ class _Idle extends StatelessWidget {
       ),
     ),
   );
+}
+
+/// Every stop done: the cash to hand over leads, and the closing is one tap away.
+class _Finished extends ConsumerWidget {
+  const _Finished({required this.run});
+
+  final LocalDeliveryRun run;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final closing = RunClosing.of(run, ref.watch(outboxRowsProvider).value ?? const []);
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Terminaste la jornada ${run.runNumber}', style: const TextStyle(color: AppColors.muted, fontWeight: FontWeight.w600)),
+            const SizedBox(height: 10),
+            const Text('Efectivo a entregar', style: TextStyle(color: AppColors.muted)),
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: Text(money(closing.cash), style: const TextStyle(fontSize: 44, fontWeight: FontWeight.w800, height: 1.1, color: AppColors.ink)),
+            ),
+            if (!closing.isFinal) const Text('Hay operaciones sin enviar: sincroniza antes de entregar.', style: TextStyle(color: AppColors.amber, fontWeight: FontWeight.w600)),
+            const SizedBox(height: 16),
+            FilledButton.icon(onPressed: () => openRunClosing(context, run), icon: const Icon(Icons.summarize_outlined), label: const Text('Ver cierre de jornada')),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 /// The headline: stops left, the progress meter and the one action that matters now.
@@ -133,7 +171,7 @@ class _TodayCard extends StatelessWidget {
             FilledButton.icon(
               onPressed: () => context.go('/deliveries/${run.id}'),
               icon: Icon(run.hasLeft ? Icons.route : Icons.local_shipping),
-              label: Text(run.hasLeft ? (left == 0 ? 'Ver la jornada' : 'Continuar ruta') : 'Revisar carga y salir'),
+              label: Text(run.hasLeft ? 'Continuar ruta' : 'Revisar carga y salir'),
             ),
           ],
         ),

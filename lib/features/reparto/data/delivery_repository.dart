@@ -92,16 +92,18 @@ LocalDeliveryStop applyOutcome(LocalDeliveryStop stop, Map<String, dynamic> payl
 /// The stop once paid: finished with what was delivered, the cash collected counted
 /// and the invoice kept on the phone to reprint it.
 LocalDeliveryStop applyPayment(LocalDeliveryStop stop, Map<String, dynamic> payload, {required LocalOperationState state}) {
-  final collected = [
-    for (final line in (payload['allocations'] as List? ?? const []).cast<Map>())
-      if (line['method'] != 'credit') DecimalValue.parse(line['amount'] ?? '0'),
-  ].fold(DecimalValue.zero, (sum, amount) => sum + amount);
+  final lines = [for (final line in (payload['allocations'] as List? ?? const []).cast<Map>()) (method: line['method'].toString(), amount: DecimalValue.parse(line['amount'] ?? '0'))];
+  final paid = [for (final line in lines) if (line.method != 'credit') line];
+  final collected = paid.fold(DecimalValue.zero, (sum, line) => sum + line.amount);
+  final credit = lines.where((line) => line.method == 'credit').fold(DecimalValue.zero, (sum, line) => sum + line.amount);
   final outcome = stop.outcomeStatus ?? 'delivered';
   return stop.copyWith(
     status: outcome,
     statusLabel: outcome == 'partially_delivered' ? 'Entrega parcial' : 'Entregado',
     collectedTotal: stop.collectedTotal + collected,
-    balanceDue: DecimalValue.zero,
+    // As on the server: what stays to pay after the payment is the credit given.
+    balanceDue: credit,
+    payments: [...stop.payments, ...paid],
     operationState: state,
     invoice: (payload['invoice'] as Map?)?.cast<String, dynamic>(),
   );

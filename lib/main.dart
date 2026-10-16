@@ -21,6 +21,7 @@ import 'features/reparto/presentation/delivery_outcome_screen.dart';
 import 'features/reparto/presentation/delivery_payment_screen.dart';
 import 'features/reparto/presentation/delivery_run_screen.dart';
 import 'features/reparto/presentation/delivery_stop_screen.dart';
+import 'features/reparto/presentation/run_closing_screen.dart';
 import 'features/session/settings_screen.dart';
 import 'features/sync/sync_screen.dart';
 
@@ -64,6 +65,7 @@ final _routerProvider = Provider<GoRouter>((ref) {
         GoRoute(path: 'deliveries', builder: (_, _) => const DeliveryRunScreen(), routes: [
           GoRoute(path: ':runId', builder: (_, state) => DeliveryRunDetailScreen(runId: state.pathParameters['runId']!), routes: [
             GoRoute(path: 'done', builder: (_, state) => DoneStopsScreen(runId: state.pathParameters['runId']!)),
+            GoRoute(path: 'closing', builder: (_, state) => RunClosingScreen(runId: state.pathParameters['runId']!)),
             GoRoute(path: 'stops/:stopId', builder: (_, state) => DeliveryStopScreen(runId: state.pathParameters['runId']!, stopId: state.pathParameters['stopId']!), routes: [
               GoRoute(path: 'outcome', builder: (_, state) => DeliveryOutcomeScreen(runId: state.pathParameters['runId']!, stopId: state.pathParameters['stopId']!)),
               GoRoute(path: 'payment', builder: (_, state) => DeliveryPaymentScreen(runId: state.pathParameters['runId']!, stopId: state.pathParameters['stopId']!)),
