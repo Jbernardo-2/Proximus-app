@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../app/providers.dart';
 import '../data/warehouse_catalog.dart';
+import 'warehouse_run_actions.dart';
 
 final warehouseProductsProvider = Provider<List<WarehouseProduct>>((ref) => warehouseProducts(
       products: ref.watch(localRecordsProvider('products')).value ?? const [],
@@ -26,9 +27,5 @@ final warehouseNamesProvider = Provider<Map<String, String>>((ref) {
 final warehouseWorkProvider = Provider<WarehouseWork?>((ref) {
   final session = ref.watch(sessionProvider).value;
   if (session == null) return null;
-  return WarehouseWork.of(
-    runs: ref.watch(localRecordsProvider('delivery_runs')).value ?? const [],
-    dispatchOrders: ref.watch(localRecordsProvider('dispatch_orders')).value ?? const [],
-    userId: session.userId,
-  );
+  return WarehouseWork.of(runs: ref.watch(warehouseRunsProvider), ordersWaiting: ref.watch(availableOrdersProvider).length, userId: session.userId);
 });

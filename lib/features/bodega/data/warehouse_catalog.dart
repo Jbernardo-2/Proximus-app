@@ -1,5 +1,6 @@
 import '../../../core/decimal_value.dart';
 import '../../preventa/data/preventa_models.dart';
+import 'warehouse_runs.dart';
 
 /// A product as the warehouse sees it: every presentation and its stock in each warehouse.
 final class WarehouseProduct {
@@ -64,16 +65,15 @@ final class WarehouseWork {
     required this.loaded,
   });
 
-  factory WarehouseWork.of({required List<Map<String, dynamic>> runs, required List<Map<String, dynamic>> dispatchOrders, required int userId}) {
-    int count(bool Function(Map<String, dynamic> run) test) => runs.where(test).length;
-    final preparing = runs.where((run) => run['status'] == 'preparing');
-    bool mine(Map<String, dynamic> run) => (run['preparation_started_by'] as num?)?.toInt() == userId;
+  factory WarehouseWork.of({required List<WarehouseRun> runs, required int ordersWaiting, required int userId}) {
+    final preparing = runs.where((run) => run.isPreparing);
+    bool mine(WarehouseRun run) => run.preparationStartedBy == userId;
     return WarehouseWork(
-      ordersWaiting: dispatchOrders.length,
-      drafts: count((run) => run['status'] == 'draft'),
+      ordersWaiting: ordersWaiting,
+      drafts: runs.where((run) => run.isDraft).length,
       preparingMine: preparing.where(mine).length,
       preparingOthers: preparing.where((run) => !mine(run)).length,
-      loaded: count((run) => run['status'] == 'loaded'),
+      loaded: runs.where((run) => run.isLoaded).length,
     );
   }
 

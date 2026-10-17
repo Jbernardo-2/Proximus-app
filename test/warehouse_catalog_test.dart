@@ -5,6 +5,7 @@ import 'package:proximus_app/app/providers.dart';
 import 'package:proximus_app/core/decimal_value.dart';
 import 'package:proximus_app/core/session.dart';
 import 'package:proximus_app/features/bodega/data/warehouse_catalog.dart';
+import 'package:proximus_app/features/bodega/data/warehouse_runs.dart';
 import 'package:proximus_app/features/bodega/presentation/product_detail_screen.dart';
 import 'package:proximus_app/features/bodega/presentation/product_search_screen.dart';
 import 'package:proximus_app/features/bodega/presentation/warehouse_dashboard.dart';
@@ -61,15 +62,10 @@ void main() {
   });
 
   test('the warehouse work tells apart runs I prepare from the ones another keeper holds', () {
+    WarehouseRun run(String status, {int? by}) => WarehouseRun(id: status, status: status, warehouseId: null, driverName: '', orders: const [], preparationStartedBy: by);
     final work = WarehouseWork.of(
-      runs: [
-        {'status': 'draft'},
-        {'status': 'preparing', 'preparation_started_by': 7},
-        {'status': 'preparing', 'preparation_started_by': 9},
-        {'status': 'loaded'},
-        {'status': 'in_transit'},
-      ],
-      dispatchOrders: [{}, {}, {}],
+      runs: [run('draft'), run('preparing', by: 7), run('preparing', by: 9), run('loaded')],
+      ordersWaiting: 3,
       userId: 7,
     );
 
@@ -96,6 +92,9 @@ void main() {
         ])),
         localRecordsProvider('delivery_runs').overrideWith((ref) => Stream.value(const [])),
         localRecordsProvider('dispatch_orders').overrideWith((ref) => Stream.value(const [])),
+        localRecordsProvider('drivers').overrideWith((ref) => Stream.value(const [])),
+        outboxRowsProvider.overrideWith((ref) => Stream.value(const [])),
+        syncStateProvider('pulled_at:delivery_runs').overrideWith((ref) => Stream.value(null)),
       ];
     });
 
