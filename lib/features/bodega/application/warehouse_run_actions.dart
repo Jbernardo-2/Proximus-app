@@ -1,123 +1,109 @@
-import 'dart:convert';
-
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../app/providers.dart';
+import '../../../core/api.dart';
 import '../../../core/decimal_value.dart';
-import '../../../core/ulid.dart';
 import '../data/warehouse_runs.dart';
 
-final _merged = Provider<({List<WarehouseRun> runs, List<DispatchOrder> available})>((ref) {
-  final pulledAt = ref.watch(syncStateProvider('pulled_at:delivery_runs')).value;
-  return mergeWarehouseRuns(
-    records: ref.watch(localRecordsProvider('delivery_runs')).value ?? const [],
-    dispatchOrders: ref.watch(localRecordsProvider('dispatch_orders')).value ?? const [],
-    outbox: ref.watch(outboxRowsProvider).value ?? const [],
-    pulledAt: pulledAt == null ? null : DateTime.tryParse(pulledAt),
-    drivers: ref.watch(driversProvider),
-    userId: ref.watch(sessionProvider).value?.userId ?? 0,
-  );
+/// A resource read from the server right now, every page of it. The warehouse works
+/// online: nothing here is kept on the phone.
+final liveResourceProvider = FutureProvider.autoDispose.family<List<Map<String, dynamic>>, String>((ref, resource) async {
+  final api = ref.watch(apiProvider);
+  if (api == null) throw ApiException('Inicia sesión con señal para trabajar en bodega.');
+  final records = <Map<String, dynamic>>[];
+  String? cursor;
+  do {
+    final page = await api.pull(resource, cursor: cursor, limit: 500);
+    records.addAll((page['records'] as List).cast<Map<String, dynamic>>());
+    cursor = page['has_more'] == true ? page['next_cursor'] as String? : null;
+  } while (cursor != null);
+  return records;
 });
 
-final warehouseRunsProvider = Provider<List<WarehouseRun>>((ref) => ref.watch(_merged).runs);
+final warehouseRunsProvider = Provider.autoDispose<AsyncValue<List<WarehouseRun>>>((ref) => ref.watch(liveResourceProvider('delivery_runs')).whenData(warehouseRuns));
 
-final warehouseRunProvider = Provider.family<WarehouseRun?, String>((ref, id) => ref.watch(warehouseRunsProvider).where((run) => run.id == id).firstOrNull);
+final warehouseRunProvider = Provider.autoDispose.family<AsyncValue<WarehouseRun?>, String>(
+  (ref, id) => ref.watch(warehouseRunsProvider).whenData((runs) => runs.where((run) => run.id == id).firstOrNull),
+);
 
-final availableOrdersProvider = Provider<List<DispatchOrder>>((ref) => ref.watch(_merged).available);
+final availableOrdersProvider = Provider.autoDispose<AsyncValue<List<DispatchOrder>>>(
+  (ref) => ref.watch(liveResourceProvider('dispatch_orders')).whenData((records) => [for (final json in records) dispatchOrderFromJson(json)]),
+);
 
-final driversProvider = Provider<Map<String, String>>((ref) => {
-  for (final driver in ref.watch(localRecordsProvider('drivers')).value ?? const <Map<String, dynamic>>[]) driver['id'].toString(): driver['name']?.toString() ?? '',
+final driversProvider = Provider.autoDispose<Map<String, String>>((ref) => {
+  for (final driver in ref.watch(liveResourceProvider('drivers')).value ?? const <Map<String, dynamic>>[]) driver['id'].toString(): driver['name']?.toString() ?? '',
 });
 
-final vehiclesProvider = Provider<Map<String, String>>((ref) => {
-  for (final vehicle in ref.watch(localRecordsProvider('vehicles')).value ?? const <Map<String, dynamic>>[])
+final vehiclesProvider = Provider.autoDispose<Map<String, String>>((ref) => {
+  for (final vehicle in ref.watch(liveResourceProvider('vehicles')).value ?? const <Map<String, dynamic>>[])
     vehicle['id'].toString(): [vehicle['code'], vehicle['license_plate']].whereType<String>().where((text) => text.isNotEmpty).join(' · '),
 });
 
-/// What the keeper picked on this phone and has not sent yet, kept across restarts.
-final pickingDraftProvider = Provider.family<Map<String, DecimalValue>, String>((ref, runId) {
-  final saved = ref.watch(syncStateProvider('picking:$runId')).value;
-  if (saved == null) return const {};
-  return {for (final entry in (jsonDecode(saved) as Map).entries) entry.key.toString(): DecimalValue.parse(entry.value)};
+/// Physical stock per product (base units) of a warehouse, read now.
+final liveOnHandProvider = Provider.autoDispose.family<AsyncValue<Map<String, DecimalValue>>, String?>((ref, warehouseId) {
+  final fallback = ref.watch(manifestProvider).value?.defaultWarehouse?['id']?.toString();
+  return ref.watch(liveResourceProvider('stocks')).whenData((records) => {
+    for (final json in records)
+      if (json['warehouse_id']?.toString() == (warehouseId ?? fallback)) json['product_id'].toString(): DecimalValue.parse(json['quantity_on_hand'] ?? '0'),
+  });
 });
 
-final warehouseRunActionsProvider = Provider<WarehouseRunActions>((ref) => WarehouseRunActions(ref));
+final warehouseRunActionsProvider = Provider.autoDispose<WarehouseRunActions>((ref) => WarehouseRunActions(ref));
 
-/// Assembling, picking and loading a run: first on the phone, then sent when there is signal.
+/// Every step goes to the server and waits for its answer; a refusal comes back as an
+/// [ApiException] with the server's message, right when the keeper acts.
 class WarehouseRunActions {
   WarehouseRunActions(this._ref);
 
   final Ref _ref;
 
-  Future<void> _queue(String type, String summary, Map<String, dynamic> payload) async {
-    final session = _ref.read(sessionProvider).value;
-    if (session == null) throw StateError('La sesión se cerró. Inicia sesión de nuevo.');
-    await _ref.read(outboxProvider).enqueue(deviceCode: session.deviceCode, type: type, summary: summary, build: (_) async => payload);
-    _ref.read(syncProvider.notifier).sync(pushOnly: true);
+  ProximusApi get _api => _ref.read(apiProvider) ?? (throw ApiException('Sin conexión con el servidor.'));
+
+  void _refresh({bool stock = false}) {
+    _ref.invalidate(liveResourceProvider('delivery_runs'));
+    _ref.invalidate(liveResourceProvider('dispatch_orders'));
+    if (stock) _ref.invalidate(liveResourceProvider('stocks'));
   }
 
-  /// Returns the id the phone gave the run, so it opens right away.
-  Future<String> create({required String warehouseId, required String driverId, String? vehicleId, required DateTime date, String? notes}) async {
-    final id = Ulid.generate();
-    await _queue('delivery.create', 'Jornada nueva', {
-      'id': id,
+  /// Returns the new run's id, so it opens right away.
+  Future<String> create({required String warehouseId, required String driverId, String? vehicleId, required DateTime date}) async {
+    final response = await _api.post('/delivery-runs', {
       'warehouse_id': warehouseId,
       'driver_id': int.tryParse(driverId) ?? driverId,
       'vehicle_id': vehicleId,
       'scheduled_date': '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}',
-      'notes': notes,
     });
-    return id;
+    _refresh();
+    return (response['data'] as Map)['id'].toString();
   }
 
-  Future<void> assign(WarehouseRun run, DispatchOrder order) =>
-      _queue('delivery.assign', 'Pedido ${order.order.orderNumber} a ${run.title}', {'delivery_run_id': run.id, 'order_id': order.order.orderId});
+  Future<void> assign(WarehouseRun run, DispatchOrder order) async {
+    await _api.post('/delivery-runs/${run.id}/orders', {'order_id': order.order.orderId});
+    _refresh();
+  }
 
-  /// An assignment still on the phone is just dropped; one the server has is undone there.
   Future<void> unassign(WarehouseRun run, RunOrder order) async {
-    if (order.pendingAssignId != null) {
-      await _ref.read(outboxProvider).dismiss(order.pendingAssignId!);
-      return;
-    }
-    if (order.runOrderId == null) throw StateError('Sincroniza antes de quitar este pedido.');
-    await _queue('delivery.unassign', 'Quitar ${order.orderNumber} de ${run.title}', {'delivery_run_id': run.id, 'run_order_id': order.runOrderId});
+    await _api.delete('/delivery-runs/${run.id}/orders/${order.runOrderId}');
+    _refresh();
   }
 
-  Future<void> startPreparation(WarehouseRun run) => _queue('delivery.prepare_start', 'Preparar ${run.title}', {'delivery_run_id': run.id});
-
-  Future<void> pick(String runId, Map<String, DecimalValue> quantities) {
-    final draft = {..._ref.read(pickingDraftProvider(runId)), ...quantities};
-    return _ref.read(databaseProvider).writeState('picking:$runId', jsonEncode({for (final entry in draft.entries) entry.key: entry.value.toString()}));
+  Future<void> startPreparation(WarehouseRun run) async {
+    await _api.post('/delivery-runs/${run.id}/preparation');
+    _refresh(stock: true);
   }
 
-  /// Sends what was picked so far, so the web and the supervisor see the progress.
-  Future<void> savePreparation(WarehouseRun run, Map<String, DecimalValue> quantities) async {
-    await _queue('delivery.prepare', 'Preparación de ${run.title}', {
-      'delivery_run_id': run.id,
+  /// Saves the picked lines; the server refuses what the warehouse does not have.
+  Future<void> pick(WarehouseRun run, Map<String, DecimalValue> quantities) async {
+    await _api.put('/delivery-runs/${run.id}/picks', {
       'items': [for (final entry in quantities.entries) {'order_item_id': entry.key, 'prepared_quantity': entry.value.toString()}],
     });
-    await _ref.read(databaseProvider).writeState('picking:${run.id}', null);
+    _refresh();
   }
 
-  Future<void> confirmLoad(WarehouseRun run, Map<String, DecimalValue> quantities) async {
-    await savePreparation(run, quantities);
-    await _queue('delivery.load', 'Carga de ${run.title}', {'delivery_run_id': run.id});
+  Future<void> confirmLoad(WarehouseRun run) async {
+    await _api.post('/delivery-runs/${run.id}/load');
+    _refresh(stock: true);
   }
+
+  void refresh() => _refresh(stock: true);
 }
-
-/// The stock a run is checked against: the physical stock of its warehouse (base units)
-/// and what other runs loaded on this phone already took from it.
-final runStockProvider = Provider.family<({Map<String, DecimalValue> onHand, Map<String, DecimalValue> committed}), String>((ref, runId) {
-  final run = ref.watch(warehouseRunProvider(runId));
-  final warehouseId = run?.warehouseId ?? ref.watch(manifestProvider).value?.defaultWarehouse?['id']?.toString();
-  return (
-    onHand: {
-      for (final json in ref.watch(localRecordsProvider('stocks')).value ?? const <Map<String, dynamic>>[])
-        if (json['warehouse_id']?.toString() == warehouseId) json['product_id'].toString(): DecimalValue.parse(json['quantity_on_hand'] ?? '0'),
-    },
-    committed: committedOnPhone(ref.watch(warehouseRunsProvider), exceptRunId: runId),
-  );
-});
-
-/// When the stock was last downloaded.
-final stockPulledAtProvider = Provider<DateTime?>((ref) => DateTime.tryParse(ref.watch(syncStateProvider('pulled_at:stocks')).value ?? ''));

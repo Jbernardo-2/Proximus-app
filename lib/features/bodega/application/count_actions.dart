@@ -1,36 +1,37 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../app/providers.dart';
+import '../../../core/api.dart';
 import '../../../core/decimal_value.dart';
 import '../data/product_counts.dart';
+import 'warehouse_run_actions.dart';
 
-final localCountsProvider = Provider<List<LocalCount>>((ref) => localCounts(ref.watch(outboxRowsProvider).value ?? const []));
+/// The latest counts on the server: the keeper's own, everyone's for a supervisor.
+final productCountsProvider = FutureProvider.autoDispose<List<ProductCount>>((ref) async {
+  final api = ref.watch(apiProvider);
+  if (api == null) throw ApiException('Inicia sesión con señal para trabajar en bodega.');
+  final response = await api.get('/inventory/product-counts');
+  return [for (final json in (response['data'] as List).cast<Map<String, dynamic>>()) ProductCount.fromJson(json)];
+});
 
-final countActionsProvider = Provider<CountActions>((ref) => CountActions(ref));
+final countActionsProvider = Provider.autoDispose<CountActions>((ref) => CountActions(ref));
 
 class CountActions {
   CountActions(this._ref);
 
   final Ref _ref;
 
-  /// Records what was counted now; the server compares it with the stock at this moment.
-  Future<void> record({required String productId, required String productName, required String warehouseId, required DecimalValue counted, String? notes}) async {
-    final session = _ref.read(sessionProvider).value;
-    if (session == null) throw StateError('La sesión se cerró. Inicia sesión de nuevo.');
-    final at = DateTime.now();
-    await _ref.read(outboxProvider).enqueue(
-      deviceCode: session.deviceCode,
-      type: 'inventory.product_count',
-      summary: 'Conteo de $productName',
-      build: (_) async => {
-        'warehouse_id': warehouseId,
-        'product_id': productId,
-        'counted_quantity': counted.toString(),
-        // UTC with its zone, so the server never reads it in another time zone.
-        'counted_at': at.toUtc().toIso8601String(),
-        'notes': (notes?.trim().isEmpty ?? true) ? null : notes!.trim(),
-      },
-    );
-    _ref.read(syncProvider.notifier).sync(pushOnly: true);
+  /// Applies the count now, at the server's time, and returns the difference it made.
+  Future<ProductCount> record({required String productId, required String warehouseId, required DecimalValue counted, String? notes}) async {
+    final api = _ref.read(apiProvider) ?? (throw ApiException('Sin conexión con el servidor.'));
+    final response = await api.post('/inventory/product-counts', {
+      'warehouse_id': warehouseId,
+      'product_id': productId,
+      'counted_quantity': counted.toString(),
+      'notes': (notes?.trim().isEmpty ?? true) ? null : notes!.trim(),
+    });
+    _ref.invalidate(productCountsProvider);
+    _ref.invalidate(liveResourceProvider('stocks'));
+    return ProductCount.fromJson((response['data'] as Map).cast<String, dynamic>());
   }
 }

@@ -1,12 +1,11 @@
-import 'dart:convert';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:proximus_app/app/providers.dart';
 import 'package:proximus_app/core/decimal_value.dart';
-import 'package:proximus_app/data/database.dart';
+import 'package:proximus_app/features/bodega/application/count_actions.dart';
+import 'package:proximus_app/features/bodega/application/warehouse_run_actions.dart';
 import 'package:proximus_app/features/bodega/data/product_counts.dart';
 import 'package:proximus_app/features/bodega/data/warehouse_catalog.dart';
 import 'package:proximus_app/features/bodega/presentation/count_sheet.dart';
@@ -18,41 +17,27 @@ import 'warehouse_catalog_test.dart' show products, stocks;
 
 DecimalValue d(String value) => DecimalValue.parse(value);
 
-OutboxData countRow(int id, String counted, {String status = OutboxStatus.pending, Map<String, dynamic>? result, String? message}) => OutboxData(
-  id: id,
-  clientReference: 'B001:$id',
-  type: 'inventory.product_count',
-  payload: jsonEncode({'warehouse_id': 'w1', 'product_id': 'p1', 'counted_quantity': counted, 'counted_at': DateTime(2026, 10, 16, 8 + id).toUtc().toIso8601String(), 'notes': id == 2 ? 'Bolsas rotas' : null}),
-  status: status,
-  summary: '',
-  attempts: 0,
-  createdAt: DateTime(2026, 10, 16, 8 + id),
-  result: result == null ? null : jsonEncode(result),
-  message: message,
-);
-
-final rows = [
-  countRow(1, '18'),
-  countRow(2, '17', status: OutboxStatus.done, result: {
-    'count_number': 'CON-2026-000009',
-    'items': [{'expected_quantity': '20.000000', 'counted_quantity': '17.000000', 'difference': '-3.000000'}],
-  }),
-  countRow(3, '5', status: OutboxStatus.rejected, message: 'La hora del conteo debe ser una fecha anterior a …'),
-];
+/// A count as the server answers it.
+Map<String, dynamic> countJson(String number, String counted, String expected, String difference, {String? notes}) => {
+  'count_number': number,
+  'warehouse': {'name': 'Bodega central'},
+  'notes': notes,
+  'posted_at': '2026-10-16T15:30:00Z',
+  'created_by': {'name': 'Rosa'},
+  'items': [
+    {'product': {'id': 'p1', 'name': 'Arroz 1 lb', 'base_unit_symbol': 'u'}, 'counted_quantity': counted, 'expected_quantity': expected, 'difference': difference},
+  ],
+};
 
 void main() {
   setUpAll(() => initializeDateFormatting('es'));
 
-  test('counts on the phone carry the server answer once applied, newest first', () {
-    final counts = localCounts(rows);
+  test('a count reads what there was, what was counted and the adjustment the server made', () {
+    final count = ProductCount.fromJson(countJson('CON-2026-000009', '17.000000', '20.000000', '-3.000000', notes: 'Bolsas rotas'));
 
-    expect(counts.map((count) => count.outboxId), [3, 2, 1]);
-    expect(counts[1].countNumber, 'CON-2026-000009');
-    expect(counts[1].difference, d('-3'));
-    expect(counts[1].notes, 'Bolsas rotas');
-    expect(counts[0].isRejected, isTrue);
-    expect(counts[2].isPending, isTrue);
-    expect(counts[2].difference, isNull);
+    expect((count.counted, count.expected, count.difference), (d('17'), d('20'), d('-3')));
+    expect(count.notes, 'Bolsas rotas');
+    expect(count.countedBy, 'Rosa');
   });
 
   test('a count by boxes and loose units adds up in base units', () {
@@ -71,9 +56,13 @@ void main() {
       apiProvider.overrideWithValue(null),
       manifestProvider.overrideWithValue(AsyncData(SyncManifest.fromJson({'default_warehouse': {'id': 'w1', 'name': 'Bodega central'}}))),
       localRecordsProvider('products').overrideWith((ref) => Stream.value(products)),
-      localRecordsProvider('stocks').overrideWith((ref) => Stream.value(stocks)),
-      localRecordsProvider('warehouses').overrideWith((ref) => Stream.value(const [{'id': 'w1', 'name': 'Bodega central', 'is_default': true}])),
-      outboxRowsProvider.overrideWith((ref) => Stream.value(rows)),
+      localRecordsProvider('stocks').overrideWith((ref) => Stream.value(const [])),
+      liveResourceProvider('stocks').overrideWith((ref) async => stocks),
+      liveResourceProvider('warehouses').overrideWith((ref) async => const [{'id': 'w1', 'name': 'Bodega central', 'is_default': true}]),
+      productCountsProvider.overrideWith((ref) async => [
+        ProductCount.fromJson(countJson('CON-2026-000009', '17.000000', '20.000000', '-3.000000')),
+        ProductCount.fromJson(countJson('CON-2026-000010', '20.000000', '20.000000', '0.000000')),
+      ]),
     ]);
 
     Future<void> pump(WidgetTester tester, Widget child) async {
@@ -91,7 +80,6 @@ void main() {
       await pump(tester, Scaffold(body: CountSheet(item: item)));
 
       expect(find.textContaining('20'), findsNothing, reason: 'the 20 in the system must not steer the count');
-      expect(find.text('Registrar conteo'), findsOneWidget);
       await tester.enterText(find.byType(TextField).at(0), '3');
       await tester.enterText(find.byType(TextField).at(1), '5');
       await tester.pump();
@@ -99,13 +87,12 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('the list shows the difference the server applied and an estimate while unsent', (tester) async {
+    testWidgets('the list shows each count the server applied with its difference', (tester) async {
       await pump(tester, const CountsScreen());
 
       expect(find.text('-3'), findsOneWidget);
-      expect(find.text('≈ -2'), findsOneWidget, reason: '18 counted against the 20 downloaded');
-      expect(find.text('Rechazado'), findsOneWidget);
-      expect(find.text('Sin enviar'), findsOneWidget);
+      expect(find.text('cuadra'), findsOneWidget);
+      expect(find.textContaining('CON-2026-000009'), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
   });

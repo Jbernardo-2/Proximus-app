@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../app/providers.dart';
 import '../../../app/theme.dart';
+import '../../../core/api.dart';
 import '../../../core/decimal_value.dart';
 import '../../preventa/presentation/product_image.dart';
 import '../application/bodega_providers.dart';
@@ -11,13 +11,13 @@ import '../application/warehouse_run_actions.dart';
 import '../data/warehouse_catalog.dart';
 import '../data/warehouse_runs.dart';
 import 'barcode_scanner_screen.dart';
+import 'online.dart';
+import 'warehouse_run_screen.dart' show BottomAction;
 
 typedef PickEntry = ({RunOrder order, PickLine line});
 
-/// Stock older than this is shown as a warning; the load is still allowed.
-const staleStockAfter = Duration(minutes: 30);
-
-/// Preparing a run, by product or by order, checked against the warehouse stock as it is typed.
+/// Preparing a run, by product or by order. Each save goes to the server, which checks
+/// the warehouse stock at that moment; the stock shown is read live.
 class PickView extends ConsumerStatefulWidget {
   const PickView({super.key, required this.run});
 
@@ -29,26 +29,17 @@ class PickView extends ConsumerStatefulWidget {
 
 class _PickViewState extends ConsumerState<PickView> {
   bool _byOrder = false;
-
-  @override
-  void initState() {
-    super.initState();
-    // Fresh stock before picking, when there is signal; without it the last download is used.
-    WidgetsBinding.instance.addPostFrameCallback((_) => ref.read(syncProvider.notifier).sync());
-  }
+  bool _loading = false;
 
   @override
   Widget build(BuildContext context) {
     final run = widget.run;
-    final draft = ref.watch(pickingDraftProvider(run.id));
-    final stock = ref.watch(runStockProvider(run.id));
-    final byProduct = stockForRun(run, draft, onHand: stock.onHand, committed: stock.committed);
+    final onHandValue = ref.watch(liveOnHandProvider(run.warehouseId));
+    final onHand = onHandValue.value ?? const <String, DecimalValue>{};
+    final byProduct = stockForRun(run, onHand: onHand);
     final groups = pickGroups(run);
-    final picked = groups.where((group) => group.preparedWith(draft) != null).length;
+    final picked = groups.where((group) => group.prepared != null).length;
     final short = [for (final entry in byProduct.entries) if (entry.value.isShort) entry];
-    final pulledAt = ref.watch(stockPulledAtProvider);
-    final stale = pulledAt == null || DateTime.now().difference(pulledAt) > staleStockAfter;
-    final orders = [...run.orders]..sort((a, b) => a.visitOrder.compareTo(b.visitOrder));
 
     return Column(children: [
       Padding(
@@ -66,69 +57,46 @@ class _PickViewState extends ConsumerState<PickView> {
       ),
       Padding(
         padding: const EdgeInsets.fromLTRB(16, 6, 16, 0),
-        child: Row(children: [
-          Expanded(
-            child: SegmentedButton<bool>(
-              segments: const [
-                ButtonSegment(value: false, label: Text('Por producto'), icon: Icon(Icons.inventory_2_outlined)),
-                ButtonSegment(value: true, label: Text('Por pedido'), icon: Icon(Icons.receipt_long_outlined)),
-              ],
-              selected: {_byOrder},
-              showSelectedIcon: false,
-              onSelectionChanged: (selection) => setState(() => _byOrder = selection.first),
-            ),
-          ),
-        ]),
-      ),
-      Padding(
-        padding: const EdgeInsets.fromLTRB(16, 6, 16, 0),
-        child: Align(
-          alignment: Alignment.centerLeft,
-          child: Text(
-            pulledAt == null ? 'Existencias sin descargar: sincroniza con señal.' : 'Existencias de hace ${_ago(pulledAt)}',
-            style: TextStyle(fontSize: 13, color: stale ? AppColors.amber : AppColors.muted, fontWeight: stale ? FontWeight.w600 : FontWeight.normal),
-          ),
+        child: SegmentedButton<bool>(
+          segments: const [
+            ButtonSegment(value: false, label: Text('Por producto'), icon: Icon(Icons.inventory_2_outlined)),
+            ButtonSegment(value: true, label: Text('Por pedido'), icon: Icon(Icons.receipt_long_outlined)),
+          ],
+          selected: {_byOrder},
+          showSelectedIcon: false,
+          onSelectionChanged: (selection) => setState(() => _byOrder = selection.first),
         ),
       ),
-      if (short.isNotEmpty)
-        Container(
-          width: double.infinity,
-          margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(color: AppColors.danger.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(12)),
-          child: Text(
-            '${short.length == 1 ? 'No alcanza 1 producto' : 'No alcanzan ${short.length} productos'} en bodega:\n'
-            '${short.map((entry) => '${_name(entry.key)}: faltan ${entry.value.missing} ${_unit(entry.key)}').join('\n')}',
-            style: const TextStyle(color: AppColors.danger, fontWeight: FontWeight.w600),
-          ),
+      if (onHandValue.hasError)
+        _Banner('No se pudo leer la existencia: ${onHandValue.error is ApiException && (onHandValue.error as ApiException).isNetwork ? 'sin conexión' : onHandValue.error}.')
+      else if (short.isNotEmpty)
+        _Banner(
+          '${short.length == 1 ? 'No alcanza 1 producto' : 'No alcanzan ${short.length} productos'} en bodega:\n'
+          '${short.map((entry) => '${_name(entry.key)}: faltan ${entry.value.missing} ${_unit(entry.key)}').join('\n')}',
         ),
+      if (onHandValue.isLoading || _loading) const Padding(padding: EdgeInsets.only(top: 6), child: LinearProgressIndicator(minHeight: 2)),
       Expanded(
-        child: ListView.separated(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-          itemCount: _byOrder ? orders.length : groups.length,
-          separatorBuilder: (_, _) => const SizedBox(height: 8),
-          itemBuilder: (context, index) => _byOrder
-              ? _OrderTile(run: run, order: orders[index], draft: draft, stock: byProduct)
-              : _GroupTile(run: run, group: groups[index], draft: draft, stock: byProduct[groups[index].productId]),
+        child: RefreshIndicator(
+          onRefresh: () async => ref.read(warehouseRunActionsProvider).refresh(),
+          child: ListView.separated(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+            itemCount: _byOrder ? run.orders.length : groups.length,
+            separatorBuilder: (_, _) => const SizedBox(height: 8),
+            itemBuilder: (context, index) => _byOrder
+                ? _OrderTile(run: run, order: run.orders[index], stock: byProduct)
+                : _GroupTile(run: run, group: groups[index], stock: byProduct[groups[index].productId], onFill: _fill),
+          ),
         ),
       ),
-      SafeArea(
-        top: false,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-          child: SizedBox(
-            width: double.infinity,
-            height: 52,
-            child: FilledButton.icon(
-              onPressed: picked < groups.length || short.isNotEmpty ? null : () => _confirm(draft, stale),
-              icon: const Icon(Icons.local_shipping_outlined),
-              label: Text(picked < groups.length
-                  ? 'Faltan ${groups.length - picked} por revisar'
-                  : short.isNotEmpty
-                  ? 'No alcanza la existencia'
-                  : 'Confirmar carga'),
-            ),
-          ),
+      BottomAction(
+        child: FilledButton.icon(
+          onPressed: picked < groups.length || short.isNotEmpty || _loading ? null : _confirm,
+          icon: const Icon(Icons.local_shipping_outlined),
+          label: Text(picked < groups.length
+              ? 'Faltan ${groups.length - picked} por revisar'
+              : short.isNotEmpty
+              ? 'No alcanza la existencia'
+              : 'Confirmar carga'),
         ),
       ),
     ]);
@@ -138,6 +106,12 @@ class _PickViewState extends ConsumerState<PickView> {
       ref.read(warehouseProductProvider(productId))?.product.name ?? widget.run.lines.where((line) => line.productId == productId).firstOrNull?.productName ?? 'Producto';
 
   String _unit(String productId) => ref.read(warehouseProductProvider(productId))?.product.baseUnit ?? 'u';
+
+  Future<void> _fill(List<PickEntry> entries) async {
+    setState(() => _loading = true);
+    await fillEntries(context, ref, widget.run, entries);
+    if (mounted) setState(() => _loading = false);
+  }
 
   Future<void> _scan(List<PickGroup> groups) async {
     final code = await scanBarcode(context);
@@ -152,10 +126,9 @@ class _PickViewState extends ConsumerState<PickView> {
     await openPickSheet(context, widget.run, title: group.productName, subtitle: '${group.presentationName} · pedido ${group.requested}', entries: group.lines, byOrder: false);
   }
 
-  Future<void> _confirm(Map<String, DecimalValue> draft, bool stale) async {
+  Future<void> _confirm() async {
     final run = widget.run;
-    final quantities = preparedQuantities(run, draft)!;
-    final empty = emptyOrders(run, quantities);
+    final empty = emptyOrders(run);
     if (empty.isNotEmpty) {
       await showDialog<void>(
         context: context,
@@ -167,17 +140,14 @@ class _PickViewState extends ConsumerState<PickView> {
       );
       return;
     }
-    final incomplete = [for (final line in run.lines) if (quantities[line.orderItemId]!.compareTo(line.requested) < 0) line];
+    final incomplete = [for (final line in run.lines) if (line.prepared!.compareTo(line.requested) < 0) line];
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Confirmar carga'),
         content: Text([
-          incomplete.isEmpty
-              ? 'Todo lo pedido va completo.'
-              : '${incomplete.length} ${incomplete.length == 1 ? 'línea va incompleta' : 'líneas van incompletas'}.',
+          incomplete.isEmpty ? 'Todo lo pedido va completo.' : '${incomplete.length} ${incomplete.length == 1 ? 'línea va incompleta' : 'líneas van incompletas'}.',
           'Al confirmar, lo preparado sale de la existencia de bodega.',
-          if (stale) 'Las existencias no son recientes: si alguien movió mercancía, el servidor puede rechazar la carga.',
         ].join('\n\n')),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Revisar')),
@@ -185,32 +155,43 @@ class _PickViewState extends ConsumerState<PickView> {
         ],
       ),
     );
-    if (confirmed == true) await ref.read(warehouseRunActionsProvider).confirmLoad(run, quantities);
+    if (confirmed != true || !mounted) return;
+    setState(() => _loading = true);
+    final ok = await runOnline(context, () => ref.read(warehouseRunActionsProvider).confirmLoad(run));
+    if (!mounted) return;
+    setState(() => _loading = false);
+    if (ok) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('${run.runNumber} cargada.')));
   }
 }
 
-String _ago(DateTime at) {
-  final minutes = DateTime.now().difference(at).inMinutes;
-  if (minutes < 1) return 'un momento';
-  if (minutes < 60) return '$minutes min';
-  final hours = minutes ~/ 60;
-  return hours < 24 ? '$hours h' : '${hours ~/ 24} d';
+class _Banner extends StatelessWidget {
+  const _Banner(this.text);
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    width: double.infinity,
+    margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+    padding: const EdgeInsets.all(12),
+    decoration: BoxDecoration(color: AppColors.danger.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(12)),
+    child: Text(text, style: const TextStyle(color: AppColors.danger, fontWeight: FontWeight.w600)),
+  );
 }
 
-/// Fills [entries] with what the stock allows, earlier stops first, and says when it fell short.
+/// Fills [entries] with what the stock allows, earlier stops first, saves it on the
+/// server and says when it fell short.
 Future<void> fillEntries(BuildContext context, WidgetRef ref, WarehouseRun run, List<PickEntry> entries) async {
-  final stock = ref.read(runStockProvider(run.id));
+  final onHand = ref.read(liveOnHandProvider(run.warehouseId)).value ?? const <String, DecimalValue>{};
   final filled = fillByVisit(
     run,
-    ref.read(pickingDraftProvider(run.id)),
     [for (final entry in entries) entry.line.orderItemId],
-    onHand: stock.onHand,
-    committed: stock.committed,
+    onHand: onHand,
     allowsDecimal: (productId) => ref.read(warehouseProductProvider(productId))?.product.allowsDecimal ?? true,
   );
-  await ref.read(warehouseRunActionsProvider).pick(run.id, filled);
+  final ok = await runOnline(context, () => ref.read(warehouseRunActionsProvider).pick(run, filled));
   final short = entries.where((entry) => filled[entry.line.orderItemId]!.compareTo(entry.line.requested) < 0).length;
-  if (short > 0 && context.mounted) {
+  if (ok && short > 0 && context.mounted) {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
       content: Text('No alcanzó para ${short == 1 ? '1 línea' : '$short líneas'}: se repartió lo disponible por orden de visita.'),
     ));
@@ -218,16 +199,16 @@ Future<void> fillEntries(BuildContext context, WidgetRef ref, WarehouseRun run, 
 }
 
 class _GroupTile extends ConsumerWidget {
-  const _GroupTile({required this.run, required this.group, required this.draft, required this.stock});
+  const _GroupTile({required this.run, required this.group, required this.stock, required this.onFill});
 
   final WarehouseRun run;
   final PickGroup group;
-  final Map<String, DecimalValue> draft;
   final ProductStock? stock;
+  final Future<void> Function(List<PickEntry> entries) onFill;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final prepared = group.preparedWith(draft);
+    final prepared = group.prepared;
     final complete = prepared != null && prepared.compareTo(group.requested) == 0;
     final unit = ref.watch(warehouseProductProvider(group.productId))?.product.baseUnit ?? 'u';
     final isShort = stock?.isShort ?? false;
@@ -253,7 +234,7 @@ class _GroupTile extends ConsumerWidget {
           IconButton(
             tooltip: 'Completo',
             icon: Icon(complete ? Icons.check_circle : Icons.check_circle_outline, color: complete ? AppColors.brand : AppColors.muted, size: 30),
-            onPressed: () => fillEntries(context, ref, run, group.lines),
+            onPressed: () => onFill(group.lines),
           ),
         ]),
         onTap: () => openPickSheet(context, run, title: group.productName, subtitle: '${group.presentationName} · pedido ${group.requested}', entries: group.lines, byOrder: false),
@@ -263,16 +244,15 @@ class _GroupTile extends ConsumerWidget {
 }
 
 class _OrderTile extends StatelessWidget {
-  const _OrderTile({required this.run, required this.order, required this.draft, required this.stock});
+  const _OrderTile({required this.run, required this.order, required this.stock});
 
   final WarehouseRun run;
   final RunOrder order;
-  final Map<String, DecimalValue> draft;
   final Map<String, ProductStock> stock;
 
   @override
   Widget build(BuildContext context) {
-    final picked = order.lines.where((line) => (draft[line.orderItemId] ?? line.prepared) != null).length;
+    final picked = order.lines.where((line) => line.prepared != null).length;
     final done = picked == order.lines.length;
     final short = order.lines.any((line) => stock[line.productId]?.isShort ?? false);
     return Card(
@@ -297,8 +277,8 @@ class _OrderTile extends StatelessWidget {
   }
 }
 
-/// The lines of one product (each order) or one order (each product), with the stock
-/// checked as the quantities are typed.
+/// The lines of one product (each order) or one order (each product), checked against
+/// the live stock as they are typed and saved on the server.
 Future<void> openPickSheet(BuildContext context, WarehouseRun run, {required String title, required String subtitle, required List<PickEntry> entries, required bool byOrder}) =>
     showModalBottomSheet<void>(
       context: context,
@@ -322,15 +302,15 @@ class _PickSheet extends ConsumerStatefulWidget {
 class _PickSheetState extends ConsumerState<_PickSheet> {
   late final Map<String, TextEditingController> _fields;
   late final Map<String, FocusNode> _focus;
+  bool _saving = false;
+
+  /// What the server answered when it refused the save.
+  String? _refusal;
 
   @override
   void initState() {
     super.initState();
-    final draft = ref.read(pickingDraftProvider(widget.run.id));
-    _fields = {
-      for (final entry in widget.entries)
-        entry.line.orderItemId: TextEditingController(text: '${draft[entry.line.orderItemId] ?? entry.line.prepared ?? entry.line.requested}'),
-    };
+    _fields = {for (final entry in widget.entries) entry.line.orderItemId: TextEditingController(text: '${entry.line.prepared ?? entry.line.requested}')};
     _focus = {for (final entry in widget.entries) entry.line.orderItemId: FocusNode()};
   }
 
@@ -353,16 +333,13 @@ class _PickSheetState extends ConsumerState<_PickSheet> {
     }
   }
 
-  /// The run's stock with what is typed here over what was picked before.
-  Map<String, ProductStock> _stock() {
-    final stock = ref.read(runStockProvider(widget.run.id));
-    final typed = {
-      ...ref.read(pickingDraftProvider(widget.run.id)),
-      for (final entry in widget.entries)
-        entry.line.orderItemId: ?_value(entry.line.orderItemId),
-    };
-    return stockForRun(widget.run, typed, onHand: stock.onHand, committed: stock.committed, unpickedAsRequested: false);
-  }
+  /// The stock with what is typed here over what was picked; unreviewed lines do not count.
+  Map<String, ProductStock> _stock() => stockForRun(
+    widget.run,
+    onHand: ref.read(liveOnHandProvider(widget.run.warehouseId)).value ?? const {},
+    typed: {for (final entry in widget.entries) entry.line.orderItemId: ?_value(entry.line.orderItemId)},
+    unpickedAsRequested: false,
+  );
 
   String? _error(PickLine line, Map<String, ProductStock> stock) {
     final value = _value(line.orderItemId);
@@ -371,9 +348,7 @@ class _PickSheetState extends ConsumerState<_PickSheet> {
     final allowsDecimal = ref.read(warehouseProductProvider(line.productId))?.product.allowsDecimal ?? true;
     if (!allowsDecimal && value.scale > 0) return 'Solo enteros';
     final productStock = stock[line.productId];
-    if (productStock != null && productStock.isShort && !value.isZero) {
-      return 'Solo hay ${productStock.available}';
-    }
+    if (productStock != null && productStock.isShort && !value.isZero) return 'Solo hay ${productStock.available}';
     return null;
   }
 
@@ -385,18 +360,37 @@ class _PickSheetState extends ConsumerState<_PickSheet> {
     final entry = widget.entries.where((entry) => entry.line.presentationId == presentation?.id).firstOrNull ??
         widget.entries.where((entry) => entry.line.productId == product?.product.id).firstOrNull;
     if (entry == null) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(product == null ? 'El código $code no está registrado.' : '${product.product.name} no va en este pedido.')));
+      setState(() => _refusal = product == null ? 'El código $code no está registrado.' : '${product.product.name} no va en este pedido.');
       return;
     }
     _focus[entry.line.orderItemId]!.requestFocus();
     _fields[entry.line.orderItemId]!.selection = TextSelection(baseOffset: 0, extentOffset: _fields[entry.line.orderItemId]!.text.length);
   }
 
+  Future<void> _save(Future<void> Function() action) async {
+    setState(() {
+      _saving = true;
+      _refusal = null;
+    });
+    try {
+      await action();
+      if (mounted) Navigator.of(context).pop();
+    } on ApiException catch (error) {
+      if (mounted) {
+        setState(() {
+          _saving = false;
+          _refusal = error.isNetwork ? 'Sin conexión: no se guardó. Revisa la señal e intenta de nuevo.' : error.message;
+        });
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final stock = _stock();
     final valid = widget.entries.every((entry) => _error(entry.line, stock) == null);
-    final products = {for (final entry in widget.entries) entry.line.productId};
+    final productId = widget.entries.first.line.productId;
+    final actions = ref.read(warehouseRunActionsProvider);
 
     return Padding(
       padding: EdgeInsets.fromLTRB(16, 16, 16, 16 + MediaQuery.viewInsetsOf(context).bottom),
@@ -410,13 +404,20 @@ class _PickSheetState extends ConsumerState<_PickSheet> {
           ),
           if (widget.byOrder) IconButton(tooltip: 'Escanear producto', icon: const Icon(Icons.qr_code_scanner), onPressed: _scan),
         ]),
-        if (!widget.byOrder && stock[products.first] != null)
+        if (!widget.byOrder && stock[productId] != null)
           Padding(
             padding: const EdgeInsets.only(top: 6),
             child: Text(
-              'En bodega: ${stock[products.first]!.available} · la jornada lleva ${stock[products.first]!.needed} ${ref.read(warehouseProductProvider(products.first))?.product.baseUnit ?? 'u'}',
-              style: TextStyle(color: stock[products.first]!.isShort ? AppColors.danger : AppColors.muted, fontWeight: FontWeight.w600),
+              'En bodega: ${stock[productId]!.available} · la jornada lleva ${stock[productId]!.needed} ${ref.read(warehouseProductProvider(productId))?.product.baseUnit ?? 'u'}',
+              style: TextStyle(color: stock[productId]!.isShort ? AppColors.danger : AppColors.muted, fontWeight: FontWeight.w600),
             ),
+          ),
+        if (_refusal != null)
+          Container(
+            margin: const EdgeInsets.only(top: 8),
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(color: AppColors.danger.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(10)),
+            child: Text(_refusal!, style: const TextStyle(color: AppColors.danger, fontWeight: FontWeight.w600)),
           ),
         const SizedBox(height: 12),
         Flexible(
@@ -454,27 +455,27 @@ class _PickSheetState extends ConsumerState<_PickSheet> {
         Row(children: [
           Expanded(
             child: OutlinedButton(
-              onPressed: () async {
-                final navigator = Navigator.of(context);
-                await fillEntries(context, ref, widget.run, widget.entries);
-                navigator.pop();
-              },
+              onPressed: _saving
+                  ? null
+                  : () => _save(() => actions.pick(
+                        widget.run,
+                        fillByVisit(
+                          widget.run,
+                          [for (final entry in widget.entries) entry.line.orderItemId],
+                          onHand: ref.read(liveOnHandProvider(widget.run.warehouseId)).value ?? const {},
+                          allowsDecimal: (id) => ref.read(warehouseProductProvider(id))?.product.allowsDecimal ?? true,
+                        ),
+                      )),
               child: Text(widget.byOrder ? 'Pedido completo' : 'Todo completo'),
             ),
           ),
           const SizedBox(width: 12),
           Expanded(
             child: FilledButton(
-              onPressed: !valid
+              onPressed: !valid || _saving
                   ? null
-                  : () async {
-                      final navigator = Navigator.of(context);
-                      await ref.read(warehouseRunActionsProvider).pick(widget.run.id, {
-                        for (final entry in widget.entries) entry.line.orderItemId: _value(entry.line.orderItemId)!,
-                      });
-                      navigator.pop();
-                    },
-              child: const Text('Guardar'),
+                  : () => _save(() => actions.pick(widget.run, {for (final entry in widget.entries) entry.line.orderItemId: _value(entry.line.orderItemId)!})),
+              child: Text(_saving ? 'Guardando…' : 'Guardar'),
             ),
           ),
         ]),

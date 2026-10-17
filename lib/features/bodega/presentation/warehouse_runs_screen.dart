@@ -9,47 +9,55 @@ import '../../preventa/presentation/daily_route_screen.dart' show StatusChip;
 import '../application/bodega_providers.dart';
 import '../application/warehouse_run_actions.dart';
 import '../data/warehouse_runs.dart';
+import 'online.dart';
 
 final _date = DateFormat('EEE d MMM', 'es');
 
 const _sections = {'draft': 'Por armar', 'preparing': 'En preparación', 'loaded': 'Listas para salir'};
 
-/// The runs the warehouse assembles, prepares and loads, in that order.
+/// The runs the warehouse assembles, prepares and loads, read from the server.
 class WarehouseRunsScreen extends ConsumerWidget {
   const WarehouseRunsScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final runs = ref.watch(warehouseRunsProvider);
-    final waiting = ref.watch(availableOrdersProvider).length;
+    final waiting = ref.watch(availableOrdersProvider).value?.length ?? 0;
 
     return Scaffold(
       appBar: AppBar(title: const Text('Jornadas de bodega')),
-      floatingActionButton: FloatingActionButton.extended(onPressed: () => _newRun(context, ref), icon: const Icon(Icons.add), label: const Text('Nueva jornada')),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 96),
-        children: [
-          if (waiting > 0)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: Text('$waiting ${waiting == 1 ? 'pedido espera' : 'pedidos esperan'} jornada.', style: const TextStyle(color: AppColors.danger, fontWeight: FontWeight.w600)),
-            ),
-          if (runs.isEmpty)
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 48),
-              child: Text('No hay jornadas abiertas. Crea una para asignar pedidos.', textAlign: TextAlign.center, style: TextStyle(color: AppColors.muted)),
-            ),
-          for (final section in _sections.entries)
-            if (runs.any((run) => run.status == section.key)) ...[
-              Padding(padding: const EdgeInsets.only(top: 12, bottom: 6), child: Text(section.value, style: const TextStyle(fontWeight: FontWeight.w700))),
-              for (final run in runs.where((run) => run.status == section.key)) RunCard(run: run),
+      floatingActionButton: FloatingActionButton.extended(onPressed: () => _newRun(context), icon: const Icon(Icons.add), label: const Text('Nueva jornada')),
+      body: runs.when(
+        loading: () => const Center(child: CircularProgressIndicator()),
+        error: (error, _) => LiveError(error: error, onRetry: () => ref.read(warehouseRunActionsProvider).refresh()),
+        data: (runs) => RefreshIndicator(
+          onRefresh: () async => ref.read(warehouseRunActionsProvider).refresh(),
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 96),
+            children: [
+              if (waiting > 0)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Text('$waiting ${waiting == 1 ? 'pedido espera' : 'pedidos esperan'} jornada.', style: const TextStyle(color: AppColors.danger, fontWeight: FontWeight.w600)),
+                ),
+              if (runs.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 48),
+                  child: Text('No hay jornadas abiertas. Crea una para asignar pedidos.', textAlign: TextAlign.center, style: TextStyle(color: AppColors.muted)),
+                ),
+              for (final section in _sections.entries)
+                if (runs.any((run) => run.status == section.key)) ...[
+                  Padding(padding: const EdgeInsets.only(top: 12, bottom: 6), child: Text(section.value, style: const TextStyle(fontWeight: FontWeight.w700))),
+                  for (final run in runs.where((run) => run.status == section.key)) RunCard(run: run),
+                ],
             ],
-        ],
+          ),
+        ),
       ),
     );
   }
 
-  Future<void> _newRun(BuildContext context, WidgetRef ref) async {
+  Future<void> _newRun(BuildContext context) async {
     final id = await showModalBottomSheet<String>(context: context, isScrollControlled: true, builder: (_) => const NewRunSheet());
     if (id != null && context.mounted) context.push('/warehouse-runs/$id');
   }
@@ -67,15 +75,10 @@ class RunCard extends ConsumerWidget {
     return Card(
       child: ListTile(
         contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-        title: Text(run.title, style: const TextStyle(fontWeight: FontWeight.w700)),
+        title: Text(run.runNumber, style: const TextStyle(fontWeight: FontWeight.w700)),
         subtitle: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text([run.driverName, if (run.scheduledDate != null) _date.format(run.scheduledDate!), '${run.orders.length} ${run.orders.length == 1 ? 'pedido' : 'pedidos'}'].join(' · ')),
-          const SizedBox(height: 4),
-          Wrap(spacing: 6, runSpacing: 4, children: [
-            if (run.pending) const StatusChip(text: 'Sin enviar', color: AppColors.amber),
-            if (heldByOther) const StatusChip(text: 'La prepara otro', color: AppColors.muted),
-            if (run.rejections.isNotEmpty) const StatusChip(text: 'Rechazo', color: AppColors.danger),
-          ]),
+          if (heldByOther) const Padding(padding: EdgeInsets.only(top: 4), child: StatusChip(text: 'La prepara otro', color: AppColors.muted)),
         ]),
         trailing: const Icon(Icons.chevron_right),
         onTap: () => context.push('/warehouse-runs/${run.id}'),
@@ -105,14 +108,17 @@ class _NewRunSheetState extends ConsumerState<NewRunSheet> {
     final vehicles = ref.watch(vehiclesProvider);
     final warehouses = ref.watch(warehouseNamesProvider);
     final warehouseId = _warehouseId ?? warehouses.keys.firstOrNull;
+    final loading = ref.watch(liveResourceProvider('drivers')).isLoading;
 
     return Padding(
       padding: EdgeInsets.fromLTRB(16, 16, 16, 16 + MediaQuery.viewInsetsOf(context).bottom),
       child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         const Text('Nueva jornada', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
         const SizedBox(height: 16),
-        if (drivers.isEmpty)
-          const Text('No hay repartidores descargados. Sincroniza con señal.', style: TextStyle(color: AppColors.danger))
+        if (loading)
+          const LinearProgressIndicator()
+        else if (drivers.isEmpty)
+          const Text('No se pudieron leer los repartidores. Revisa la señal.', style: TextStyle(color: AppColors.danger))
         else
           DropdownButtonFormField<String>(
             initialValue: _driverId,
@@ -156,10 +162,15 @@ class _NewRunSheetState extends ConsumerState<NewRunSheet> {
               : () async {
                   setState(() => _saving = true);
                   final navigator = Navigator.of(context);
-                  final id = await ref.read(warehouseRunActionsProvider).create(warehouseId: warehouseId, driverId: _driverId!, vehicleId: _vehicleId, date: _date);
-                  navigator.pop(id);
+                  String? id;
+                  final ok = await runOnline(context, () async => id = await ref.read(warehouseRunActionsProvider).create(warehouseId: warehouseId, driverId: _driverId!, vehicleId: _vehicleId, date: _date));
+                  if (ok) {
+                    navigator.pop(id);
+                  } else if (mounted) {
+                    setState(() => _saving = false);
+                  }
                 },
-          child: const Text('Crear y asignar pedidos'),
+          child: Text(_saving ? 'Creando…' : 'Crear y asignar pedidos'),
         ),
       ]),
     );

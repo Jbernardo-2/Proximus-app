@@ -1,71 +1,53 @@
-import 'dart:convert';
-
 import '../../../core/decimal_value.dart';
-import '../../../data/database.dart';
 import '../../preventa/data/preventa_models.dart';
 
-/// A product counted on this phone, from the queue: pending, applied by the server, or refused.
-final class LocalCount {
-  const LocalCount({
-    required this.outboxId,
+/// A single-product count as the server applied it.
+final class ProductCount {
+  const ProductCount({
+    required this.countNumber,
     required this.productId,
-    required this.warehouseId,
+    required this.productName,
+    required this.unit,
+    required this.warehouseName,
     required this.counted,
-    required this.countedAt,
-    required this.status,
+    required this.expected,
+    required this.difference,
+    required this.postedAt,
     this.notes,
-    this.message,
-    this.countNumber,
-    this.expected,
-    this.difference,
+    this.countedBy,
   });
 
-  final int outboxId;
+  factory ProductCount.fromJson(Map<String, dynamic> json) {
+    final item = ((json['items'] as List?) ?? const []).cast<Map>().first;
+    final product = (item['product'] as Map?) ?? const {};
+    return ProductCount(
+      countNumber: json['count_number']?.toString() ?? '',
+      productId: product['id']?.toString() ?? '',
+      productName: product['name']?.toString() ?? '',
+      unit: product['base_unit_symbol']?.toString() ?? 'u',
+      warehouseName: (json['warehouse'] as Map?)?['name']?.toString() ?? '',
+      counted: DecimalValue.parse(item['counted_quantity']),
+      expected: DecimalValue.parse(item['expected_quantity'] ?? '0'),
+      difference: DecimalValue.parse(item['difference'] ?? '0'),
+      postedAt: DateTime.tryParse(json['posted_at']?.toString() ?? '')?.toLocal() ?? DateTime.now(),
+      notes: json['notes']?.toString(),
+      countedBy: (json['created_by'] as Map?)?['name']?.toString(),
+    );
+  }
+
+  final String countNumber;
   final String productId;
-  final String warehouseId;
+  final String productName;
+  final String unit;
+  final String warehouseName;
 
   /// In base units.
   final DecimalValue counted;
-  final DateTime countedAt;
-  final String status;
+  final DecimalValue expected;
+  final DecimalValue difference;
+  final DateTime postedAt;
   final String? notes;
-
-  /// Why the server refused it.
-  final String? message;
-
-  /// What the server answered once it applied the count.
-  final String? countNumber;
-  final DecimalValue? expected;
-  final DecimalValue? difference;
-
-  bool get isPending => status == OutboxStatus.pending;
-  bool get isRejected => status == OutboxStatus.rejected;
-}
-
-/// Counts recorded on this phone, newest first.
-List<LocalCount> localCounts(List<OutboxData> outbox) {
-  final counts = <LocalCount>[];
-  for (final row in outbox) {
-    if (row.type != 'inventory.product_count') continue;
-    final payload = (jsonDecode(row.payload) as Map).cast<String, dynamic>();
-    final data = row.result == null ? null : jsonDecode(row.result!);
-    final item = data is Map ? ((data['items'] as List?)?.firstOrNull as Map?) : null;
-    counts.add(LocalCount(
-      outboxId: row.id,
-      productId: payload['product_id'].toString(),
-      warehouseId: payload['warehouse_id'].toString(),
-      counted: DecimalValue.parse(payload['counted_quantity']),
-      countedAt: DateTime.tryParse(payload['counted_at']?.toString() ?? '')?.toLocal() ?? row.createdAt,
-      notes: payload['notes']?.toString(),
-      status: row.status,
-      message: row.message,
-      countNumber: data is Map ? data['count_number']?.toString() : null,
-      expected: item?['expected_quantity'] == null ? null : DecimalValue.parse(item!['expected_quantity']),
-      difference: item?['difference'] == null ? null : DecimalValue.parse(item!['difference']),
-    ));
-  }
-  counts.sort((a, b) => b.countedAt.compareTo(a.countedAt));
-  return counts;
+  final String? countedBy;
 }
 
 /// What a count by presentations adds up to in base units; null while nothing was typed.

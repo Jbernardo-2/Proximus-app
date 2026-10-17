@@ -94,6 +94,12 @@ class ProximusApi implements SyncApi {
   Future<Map<String, dynamic>> get(String path, {Map<String, dynamic>? query}) =>
       _send(() => _dio.get(path, queryParameters: query));
 
+  Future<Map<String, dynamic>> post(String path, [Map<String, dynamic>? data]) => _send(() => _dio.post(path, data: data));
+
+  Future<Map<String, dynamic>> put(String path, Map<String, dynamic> data) => _send(() => _dio.put(path, data: data));
+
+  Future<Map<String, dynamic>> delete(String path) => _send(() => _dio.delete(path));
+
   Future<Map<String, dynamic>> _send(Future<Response<dynamic>> Function() request) async {
     try {
       final response = await request();

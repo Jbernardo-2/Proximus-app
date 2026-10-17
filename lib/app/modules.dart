@@ -42,11 +42,12 @@ bool _customers(SyncManifest manifest, Session session) => manifest.hasResource(
 bool _deliveries(SyncManifest manifest, Session session) =>
     manifest.hasResource('delivery_runs') && manifest.supports('delivery.outcome');
 
-bool _prepares(SyncManifest manifest, Session session) => manifest.supports('delivery.prepare');
+// The warehouse works online, so its modules follow the session's permissions, not the offline queue.
+bool _prepares(SyncManifest manifest, Session session) => session.can('deliveries:prepare');
 
-bool _counts(SyncManifest manifest, Session session) => manifest.supports('inventory.product_count');
+bool _counts(SyncManifest manifest, Session session) => session.can('inventory:operate');
 
-bool _receipts(SyncManifest manifest, Session session) => manifest.supports('inventory.receipt');
+bool _receipts(SyncManifest manifest, Session session) => session.can('inventory:operate');
 
 bool _credit(SyncManifest manifest, Session session) => session.can('credits:configure');
 

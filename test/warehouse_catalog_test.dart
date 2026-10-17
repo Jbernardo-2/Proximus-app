@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:proximus_app/app/providers.dart';
 import 'package:proximus_app/core/decimal_value.dart';
 import 'package:proximus_app/core/session.dart';
+import 'package:proximus_app/features/bodega/application/warehouse_run_actions.dart';
 import 'package:proximus_app/features/bodega/data/warehouse_catalog.dart';
 import 'package:proximus_app/features/bodega/data/warehouse_runs.dart';
 import 'package:proximus_app/features/bodega/presentation/product_detail_screen.dart';
@@ -62,7 +63,7 @@ void main() {
   });
 
   test('the warehouse work tells apart runs I prepare from the ones another keeper holds', () {
-    WarehouseRun run(String status, {int? by}) => WarehouseRun(id: status, status: status, warehouseId: null, driverName: '', orders: const [], preparationStartedBy: by);
+    WarehouseRun run(String status, {int? by}) => WarehouseRun(id: status, runNumber: status, status: status, warehouseId: null, driverName: '', orders: const [], preparationStartedBy: by);
     final work = WarehouseWork.of(
       runs: [run('draft'), run('preparing', by: 7), run('preparing', by: 9), run('loaded')],
       ordersWaiting: 3,
@@ -85,16 +86,14 @@ void main() {
           'default_warehouse': {'id': 'w1', 'name': 'Bodega central'},
         }))),
         localRecordsProvider('products').overrideWith((ref) => Stream.value(products)),
-        localRecordsProvider('stocks').overrideWith((ref) => Stream.value(stocks)),
-        localRecordsProvider('warehouses').overrideWith((ref) => Stream.value([
+        localRecordsProvider('stocks').overrideWith((ref) => Stream.value(const [])),
+        liveResourceProvider('stocks').overrideWith((ref) async => stocks),
+        liveResourceProvider('warehouses').overrideWith((ref) async => [
           {'id': 'w2', 'name': 'Bodega norte', 'is_default': false},
           {'id': 'w1', 'name': 'Bodega central', 'is_default': true},
-        ])),
-        localRecordsProvider('delivery_runs').overrideWith((ref) => Stream.value(const [])),
-        localRecordsProvider('dispatch_orders').overrideWith((ref) => Stream.value(const [])),
-        localRecordsProvider('drivers').overrideWith((ref) => Stream.value(const [])),
-        outboxRowsProvider.overrideWith((ref) => Stream.value(const [])),
-        syncStateProvider('pulled_at:delivery_runs').overrideWith((ref) => Stream.value(null)),
+        ]),
+        liveResourceProvider('delivery_runs').overrideWith((ref) async => const []),
+        liveResourceProvider('dispatch_orders').overrideWith((ref) async => const []),
       ];
     });
 

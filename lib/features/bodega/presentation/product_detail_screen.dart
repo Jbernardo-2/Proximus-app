@@ -24,7 +24,7 @@ class ProductDetailScreen extends ConsumerWidget {
     final product = item.product;
     final unit = product.baseUnit ?? 'u';
     final warehouses = ref.watch(warehouseNamesProvider);
-    final manifestCounts = ref.watch(manifestProvider).value?.supports('inventory.product_count') ?? false;
+    final manifestCounts = ref.watch(sessionProvider).value?.can('inventory:operate') ?? false;
 
     return Scaffold(
       appBar: AppBar(title: Text(product.sku)),

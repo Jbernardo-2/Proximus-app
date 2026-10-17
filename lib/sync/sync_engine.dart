@@ -92,7 +92,8 @@ class SyncEngine {
       final resources = (manifest['resources'] as Map<String, dynamic>? ?? const {});
       for (final entry in resources.entries) {
         final info = entry.value as Map<String, dynamic>;
-        if (info['available'] != true) {
+        // Live resources (the warehouse) are read by the screens from the server and never kept.
+        if (info['available'] != true || info['mode'] == 'live') {
           await _forget(entry.key);
           continue;
         }

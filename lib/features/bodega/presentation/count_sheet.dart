@@ -8,6 +8,7 @@ import '../../../core/decimal_value.dart';
 import '../../preventa/data/preventa_models.dart';
 import '../../preventa/presentation/product_image.dart';
 import '../application/bodega_providers.dart';
+import '../../../core/api.dart';
 import '../application/count_actions.dart';
 import '../data/product_counts.dart';
 import '../data/warehouse_catalog.dart';
@@ -31,6 +32,10 @@ class _CountSheetState extends ConsumerState<CountSheet> {
   final _notes = TextEditingController();
   String? _warehouseId;
   bool _saving = false;
+
+  /// The server's answer: the count applied, or why it was refused.
+  ProductCount? _result;
+  String? _refusal;
 
   /// Largest first: a keeper counts boxes, then the loose units.
   List<LocalPresentation> get _presentations => [
@@ -73,8 +78,27 @@ class _CountSheetState extends ConsumerState<CountSheet> {
     return null;
   }
 
+  Future<void> _record(String warehouseId, DecimalValue total) async {
+    setState(() {
+      _saving = true;
+      _refusal = null;
+    });
+    try {
+      final result = await ref.read(countActionsProvider).record(productId: widget.item.product.id, warehouseId: warehouseId, counted: total, notes: _notes.text);
+      if (mounted) setState(() => _result = result);
+    } on ApiException catch (error) {
+      if (mounted) {
+        setState(() {
+          _saving = false;
+          _refusal = error.isNetwork ? 'Sin conexión: no se guardó. Revisa la señal e intenta de nuevo.' : error.message;
+        });
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    if (_result != null) return _Result(count: _result!);
     final product = widget.item.product;
     final unit = product.baseUnit ?? 'u';
     final warehouses = ref.watch(warehouseNamesProvider);
@@ -138,21 +162,54 @@ class _CountSheetState extends ConsumerState<CountSheet> {
           ),
           const SizedBox(height: 12),
           TextField(controller: _notes, maxLength: 500, decoration: const InputDecoration(labelText: 'Nota (opcional)', hintText: 'Ejemplo: dos bolsas rotas')),
+          if (_refusal != null)
+            Container(
+              margin: const EdgeInsets.only(bottom: 8),
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(color: AppColors.danger.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(10)),
+              child: Text(_refusal!, style: const TextStyle(color: AppColors.danger, fontWeight: FontWeight.w600)),
+            ),
           const SizedBox(height: 8),
           FilledButton.icon(
             icon: const Icon(Icons.fact_check_outlined),
-            onPressed: !valid || warehouseId == null || _saving
-                ? null
-                : () async {
-                    setState(() => _saving = true);
-                    final navigator = Navigator.of(context);
-                    await ref.read(countActionsProvider).record(productId: product.id, productName: product.name, warehouseId: warehouseId, counted: total, notes: _notes.text);
-                    navigator.pop(true);
-                  },
-            label: const Text('Registrar conteo'),
+            onPressed: !valid || warehouseId == null || _saving ? null : () => _record(warehouseId, total),
+            label: Text(_saving ? 'Registrando…' : 'Registrar conteo'),
           ),
         ]),
       ),
+    );
+  }
+}
+
+/// What the server applied: there was, was counted, and the adjustment it made.
+class _Result extends StatelessWidget {
+  const _Result({required this.count});
+
+  final ProductCount count;
+
+  @override
+  Widget build(BuildContext context) {
+    final balanced = count.difference.isZero;
+    return Padding(
+      padding: const EdgeInsets.all(20),
+      child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Icon(balanced ? Icons.check_circle : Icons.swap_vert_circle, size: 44, color: balanced ? AppColors.brand : AppColors.amber),
+        const SizedBox(height: 8),
+        Text(balanced ? 'Cuadra con el sistema' : 'Existencia ajustada', textAlign: TextAlign.center, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+        Text('${count.productName} · ${count.countNumber}', textAlign: TextAlign.center, style: const TextStyle(color: AppColors.muted)),
+        const SizedBox(height: 16),
+        Row(children: [
+          for (final figure in [('Había', '${count.expected}'), ('Contado', '${count.counted}'), ('Diferencia', count.difference.isNegative || balanced ? '${count.difference}' : '+${count.difference}')])
+            Expanded(
+              child: Column(children: [
+                Text(figure.$1, style: const TextStyle(color: AppColors.muted, fontSize: 12)),
+                Text('${figure.$2} ${count.unit}', style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
+              ]),
+            ),
+        ]),
+        const SizedBox(height: 20),
+        FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Listo')),
+      ]),
     );
   }
 }
