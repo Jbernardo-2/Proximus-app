@@ -16,6 +16,8 @@ import 'features/bodega/presentation/receipts_screen.dart';
 import 'features/bodega/presentation/warehouse_run_screen.dart';
 import 'features/bodega/presentation/warehouse_runs_screen.dart';
 import 'features/home/home_screen.dart';
+import 'features/supervision/presentation/field_screen.dart';
+import 'features/supervision/presentation/settlement_screen.dart';
 import 'features/preventa/presentation/customer_screen.dart';
 import 'features/preventa/presentation/customers_screen.dart';
 import 'features/preventa/presentation/daily_route_screen.dart';
@@ -93,6 +95,10 @@ final _routerProvider = Provider<GoRouter>((ref) {
           ]),
         ]),
         GoRoute(path: 'counts', builder: (_, _) => const CountsScreen()),
+        GoRoute(path: 'field', builder: (_, _) => const FieldScreen()),
+        GoRoute(path: 'settlements', builder: (_, _) => const SettlementsScreen(), routes: [
+          GoRoute(path: ':id', builder: (_, state) => SettlementScreen(runId: state.pathParameters['id']!)),
+        ]),
         GoRoute(path: 'receipts', builder: (_, _) => const ReceiptsScreen(), routes: [
           GoRoute(path: 'new', builder: (_, _) => const NewReceiptScreen()),
           GoRoute(path: ':id', builder: (_, state) => ReceiptDetailScreen(receiptId: state.pathParameters['id']!)),

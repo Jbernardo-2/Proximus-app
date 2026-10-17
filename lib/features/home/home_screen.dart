@@ -6,6 +6,7 @@ import '../../app/modules.dart';
 import '../../app/providers.dart';
 import '../../app/theme.dart';
 import '../bodega/presentation/warehouse_dashboard.dart';
+import '../supervision/presentation/supervisor_dashboard.dart';
 import '../reparto/presentation/driver_dashboard.dart';
 import '../session/background_banner.dart';
 import '../session/session_banner.dart';
@@ -26,7 +27,9 @@ class HomeScreen extends ConsumerWidget {
     final manifest = ref.watch(manifestProvider).value;
     final modules = manifest == null ? const <AppModule>[] : modulesFor(manifest, session);
     // A driver's home is their day, not a menu: the dashboard takes the place of the modules.
-    final driverHome = modules.any((module) => module.path == '/deliveries') && !modules.any((module) => module.path == '/route');
+    // A supervisor may also record deliveries, but their home is the panel, not a driver's day.
+    final driverHome = modules.any((module) => module.path == '/deliveries') &&
+        !modules.any((module) => module.path == '/route' || module.path == '/field' || module.path == '/warehouse-runs');
 
     return Scaffold(
       appBar: AppBar(
@@ -50,6 +53,11 @@ class HomeScreen extends ConsumerWidget {
             const SizedBox(height: 20),
             SyncSummaryCard(onTap: () => context.go('/sync')),
           ] else ...[
+            // Management starts from the day's money and what waits for them.
+            if (session.can('reports:view')) ...[
+              const SupervisorDashboard(),
+              const SizedBox(height: 20),
+            ],
             // Whoever dispatches (warehouse, supervisor) starts from products and what waits to go out.
             if (manifest?.hasResource('dispatch_orders') ?? false) ...[
               const WarehouseDashboard(),

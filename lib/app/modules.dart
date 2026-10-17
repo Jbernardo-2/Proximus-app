@@ -30,6 +30,8 @@ const appModules = [
   AppModule(label: 'Jornadas de bodega', icon: Icons.inventory_outlined, path: '/warehouse-runs', isAvailable: _prepares),
   AppModule(label: 'Conteos', icon: Icons.fact_check_outlined, path: '/counts', isAvailable: _counts),
   AppModule(label: 'Entradas', icon: Icons.move_to_inbox_outlined, path: '/receipts', isAvailable: _receipts),
+  AppModule(label: 'Campo', icon: Icons.map_outlined, path: '/field', isAvailable: _supervises),
+  AppModule(label: 'Liquidar', icon: Icons.point_of_sale_outlined, path: '/settlements', isAvailable: _settles),
   AppModule(label: 'Crédito', icon: Icons.account_balance_wallet_outlined, isAvailable: _credit),
   AppModule(label: 'Reportes', icon: Icons.bar_chart, isAvailable: _reports),
 ];
@@ -48,6 +50,10 @@ bool _prepares(SyncManifest manifest, Session session) => session.can('deliverie
 bool _counts(SyncManifest manifest, Session session) => session.can('inventory:operate');
 
 bool _receipts(SyncManifest manifest, Session session) => session.can('inventory:operate');
+
+bool _supervises(SyncManifest manifest, Session session) => session.can('reports:view');
+
+bool _settles(SyncManifest manifest, Session session) => session.can('deliveries:settle');
 
 bool _credit(SyncManifest manifest, Session session) => session.can('credits:configure');
 
