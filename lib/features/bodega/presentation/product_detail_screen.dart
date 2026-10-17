@@ -5,7 +5,9 @@ import '../../../app/theme.dart';
 import '../../../core/decimal_value.dart';
 import '../../../core/formatting.dart';
 import '../../preventa/presentation/product_image.dart';
+import '../../../app/providers.dart';
 import '../application/bodega_providers.dart';
+import 'count_sheet.dart';
 
 /// Everything the warehouse checks on a product: stock per warehouse and each presentation.
 class ProductDetailScreen extends ConsumerWidget {
@@ -22,11 +24,15 @@ class ProductDetailScreen extends ConsumerWidget {
     final product = item.product;
     final unit = product.baseUnit ?? 'u';
     final warehouses = ref.watch(warehouseNamesProvider);
+    final manifestCounts = ref.watch(manifestProvider).value?.supports('inventory.product_count') ?? false;
 
     return Scaffold(
       appBar: AppBar(title: Text(product.sku)),
+      floatingActionButton: manifestCounts
+          ? FloatingActionButton.extended(onPressed: () => openCountSheet(context, item), icon: const Icon(Icons.fact_check_outlined), label: const Text('Contar'))
+          : null,
       body: ListView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
         children: [
           Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
             ProductImage(productId: product.id, size: 96),

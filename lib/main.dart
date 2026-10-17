@@ -8,6 +8,7 @@ import 'app/providers.dart';
 import 'app/theme.dart';
 import 'data/database.dart';
 import 'features/bodega/presentation/assign_orders_screen.dart';
+import 'features/bodega/presentation/counts_screen.dart';
 import 'features/bodega/presentation/product_detail_screen.dart';
 import 'features/bodega/presentation/product_search_screen.dart';
 import 'features/bodega/presentation/warehouse_run_screen.dart';
@@ -89,6 +90,7 @@ final _routerProvider = Provider<GoRouter>((ref) {
             GoRoute(path: 'orders', builder: (_, state) => AssignOrdersScreen(runId: state.pathParameters['id']!)),
           ]),
         ]),
+        GoRoute(path: 'counts', builder: (_, _) => const CountsScreen()),
         GoRoute(path: 'orders/:key', builder: (_, state) => OrderDetailScreen(orderKey: state.pathParameters['key']!)),
       ]),
     ],

@@ -11,9 +11,13 @@ import 'barcode_scanner_screen.dart';
 
 /// Find a product by name, code or barcode, with the camera when it is at hand.
 class ProductSearchScreen extends ConsumerStatefulWidget {
-  const ProductSearchScreen({super.key, this.scanOnOpen = false});
+  const ProductSearchScreen({super.key, this.scanOnOpen = false, this.title = 'Productos', this.onPick});
 
   final bool scanOnOpen;
+  final String title;
+
+  /// Choosing a product for something else (a count) instead of opening it.
+  final void Function(WarehouseProduct item)? onPick;
 
   @override
   ConsumerState<ProductSearchScreen> createState() => _ProductSearchScreenState();
@@ -39,12 +43,14 @@ class _ProductSearchScreenState extends ConsumerState<ProductSearchScreen> {
     if (code == null || !mounted) return;
     final product = productForBarcode(ref.read(warehouseProductsProvider), code);
     if (product != null) {
-      context.push('/products/${product.product.id}');
+      _open(product);
       return;
     }
     setState(() => _search.text = code);
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('El código $code no está registrado en ningún producto.')));
   }
+
+  void _open(WarehouseProduct item) => widget.onPick == null ? context.push('/products/${item.product.id}') : widget.onPick!(item);
 
   @override
   Widget build(BuildContext context) {
@@ -53,7 +59,7 @@ class _ProductSearchScreenState extends ConsumerState<ProductSearchScreen> {
     final warehouseId = ref.watch(manifestProvider).value?.defaultWarehouse?['id']?.toString();
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Productos')),
+      appBar: AppBar(title: Text(widget.title)),
       body: Column(children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
@@ -88,7 +94,7 @@ class _ProductSearchScreenState extends ConsumerState<ProductSearchScreen> {
                   padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
                   itemCount: results.length,
                   separatorBuilder: (_, _) => const SizedBox(height: 8),
-                  itemBuilder: (context, index) => _ProductTile(item: results[index], warehouseId: warehouseId),
+                  itemBuilder: (context, index) => _ProductTile(item: results[index], warehouseId: warehouseId, onTap: () => _open(results[index])),
                 ),
         ),
       ]),
@@ -97,10 +103,11 @@ class _ProductSearchScreenState extends ConsumerState<ProductSearchScreen> {
 }
 
 class _ProductTile extends StatelessWidget {
-  const _ProductTile({required this.item, required this.warehouseId});
+  const _ProductTile({required this.item, required this.warehouseId, required this.onTap});
 
   final WarehouseProduct item;
   final String? warehouseId;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -120,7 +127,7 @@ class _ProductTile extends StatelessWidget {
             Text(product.baseUnit ?? 'u', style: const TextStyle(fontSize: 12, color: AppColors.muted)),
           ],
         ),
-        onTap: () => context.push('/products/${product.id}'),
+        onTap: onTap,
       ),
     );
   }
