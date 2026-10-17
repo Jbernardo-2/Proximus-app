@@ -30,6 +30,7 @@ const appModules = [
   AppModule(label: 'Jornadas de bodega', icon: Icons.inventory_outlined, path: '/warehouse-runs', isAvailable: _prepares),
   AppModule(label: 'Conteos', icon: Icons.fact_check_outlined, path: '/counts', isAvailable: _counts),
   AppModule(label: 'Entradas', icon: Icons.move_to_inbox_outlined, path: '/receipts', isAvailable: _receipts),
+  AppModule(label: 'Productos', icon: Icons.category_outlined, path: '/catalog', isAvailable: _managesCatalog),
   AppModule(label: 'Campo', icon: Icons.map_outlined, path: '/field', isAvailable: _supervises),
   AppModule(label: 'Liquidar', icon: Icons.point_of_sale_outlined, path: '/settlements', isAvailable: _settles),
   AppModule(label: 'Crédito', icon: Icons.account_balance_wallet_outlined, isAvailable: _credit),
@@ -52,6 +53,9 @@ bool _counts(SyncManifest manifest, Session session) => session.can('inventory:o
 bool _receipts(SyncManifest manifest, Session session) => session.can('inventory:operate');
 
 bool _supervises(SyncManifest manifest, Session session) => session.can('reports:view');
+
+/// The server gives this ability on the phone only to supervisors and admins.
+bool _managesCatalog(SyncManifest manifest, Session session) => session.can('catalog:manage');
 
 bool _settles(SyncManifest manifest, Session session) => session.can('deliveries:settle');
 

@@ -18,7 +18,8 @@ final class WarehouseProduct {
 }
 
 /// Active products (sellable or not, the warehouse handles both) with their stock, by name.
-List<WarehouseProduct> warehouseProducts({required List<Map<String, dynamic>> products, required List<Map<String, dynamic>> stocks}) {
+/// With [includeInactive] (managing the catalog) inactive products show too, to bring them back.
+List<WarehouseProduct> warehouseProducts({required List<Map<String, dynamic>> products, required List<Map<String, dynamic>> stocks, bool includeInactive = false}) {
   final byProduct = <String, Map<String, LocalStock>>{};
   for (final json in stocks) {
     final stock = LocalStock.fromJson(json);
@@ -26,7 +27,7 @@ List<WarehouseProduct> warehouseProducts({required List<Map<String, dynamic>> pr
   }
   return [
     for (final json in products)
-      if (json['deleted'] != true && json['is_active'] == true)
+      if (json['deleted'] != true && (includeInactive || json['is_active'] == true))
         WarehouseProduct(product: LocalProduct.fromJson(json), stocks: byProduct[json['id'].toString()] ?? const {}),
   ]..sort((a, b) => a.product.name.toLowerCase().compareTo(b.product.name.toLowerCase()));
 }

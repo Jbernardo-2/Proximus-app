@@ -11,6 +11,12 @@ final warehouseProductsProvider = Provider.autoDispose<List<WarehouseProduct>>((
       stocks: ref.watch(liveResourceProvider('stocks')).value ?? ref.watch(localRecordsProvider('stocks')).value ?? const [],
     ));
 
+final managedProductsProvider = Provider.autoDispose<List<WarehouseProduct>>((ref) => warehouseProducts(
+      products: ref.watch(localRecordsProvider('products')).value ?? const [],
+      stocks: ref.watch(localRecordsProvider('stocks')).value ?? const [],
+      includeInactive: true,
+    ));
+
 final warehouseProductProvider = Provider.autoDispose.family<WarehouseProduct?, String>(
   (ref, productId) => ref.watch(warehouseProductsProvider).where((item) => item.product.id == productId).firstOrNull,
 );

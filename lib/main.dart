@@ -15,6 +15,8 @@ import 'features/bodega/presentation/product_search_screen.dart';
 import 'features/bodega/presentation/receipts_screen.dart';
 import 'features/bodega/presentation/warehouse_run_screen.dart';
 import 'features/bodega/presentation/warehouse_runs_screen.dart';
+import 'features/catalogo/presentation/product_admin_screen.dart';
+import 'features/catalogo/presentation/product_form_screen.dart';
 import 'features/home/home_screen.dart';
 import 'features/supervision/presentation/field_screen.dart';
 import 'features/supervision/presentation/settlement_screen.dart';
@@ -96,6 +98,10 @@ final _routerProvider = Provider<GoRouter>((ref) {
         ]),
         GoRoute(path: 'counts', builder: (_, _) => const CountsScreen()),
         GoRoute(path: 'field', builder: (_, _) => const FieldScreen()),
+        GoRoute(path: 'catalog', builder: (_, _) => const ProductSearchScreen(title: 'Productos', manage: true), routes: [
+          GoRoute(path: 'new', builder: (_, state) => ProductFormScreen(barcode: state.uri.queryParameters['barcode'])),
+          GoRoute(path: ':id', builder: (_, state) => ProductAdminScreen(productId: state.pathParameters['id']!)),
+        ]),
         GoRoute(path: 'settlements', builder: (_, _) => const SettlementsScreen(), routes: [
           GoRoute(path: ':id', builder: (_, state) => SettlementScreen(runId: state.pathParameters['id']!)),
         ]),

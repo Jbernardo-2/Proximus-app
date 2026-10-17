@@ -12,7 +12,10 @@ import 'catalog_edit.dart';
 
 /// Find a product by name, code or barcode, with the camera when it is at hand.
 class ProductSearchScreen extends ConsumerStatefulWidget {
-  const ProductSearchScreen({super.key, this.scanOnOpen = false, this.title = 'Productos', this.onPick});
+  const ProductSearchScreen({super.key, this.scanOnOpen = false, this.title = 'Productos', this.onPick, this.manage = false});
+
+  /// Managing the catalog: inactive products show, a product opens to be edited, and new ones are created.
+  final bool manage;
 
   final bool scanOnOpen;
   final String title;
@@ -52,25 +55,33 @@ class _ProductSearchScreenState extends ConsumerState<ProductSearchScreen> {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
       content: Text('El código $code no está registrado en ningún producto.'),
       duration: const Duration(seconds: 8),
-      action: editsCatalog && widget.onPick == null
-          ? SnackBarAction(label: 'Asignar', onPressed: () {
+      action: !editsCatalog || widget.onPick != null
+          ? null
+          : widget.manage
+          // A new product on the shelf: create it with the code just read.
+          ? SnackBarAction(label: 'Crear', onPressed: () => context.push('/catalog/new?barcode=${Uri.encodeQueryComponent(code)}'))
+          : SnackBarAction(label: 'Asignar', onPressed: () {
               setState(_search.clear);
               assignScannedCode(context, code);
-            })
-          : null,
+            }),
     ));
   }
 
-  void _open(WarehouseProduct item) => widget.onPick == null ? context.push('/products/${item.product.id}') : widget.onPick!(item);
+  void _open(WarehouseProduct item) => widget.onPick != null
+      ? widget.onPick!(item)
+      : context.push(widget.manage ? '/catalog/${item.product.id}' : '/products/${item.product.id}');
 
   @override
   Widget build(BuildContext context) {
-    final all = ref.watch(warehouseProductsProvider);
+    final all = ref.watch(widget.manage ? managedProductsProvider : warehouseProductsProvider);
     final results = searchWarehouseProducts(all, _search.text);
     final warehouseId = ref.watch(manifestProvider).value?.defaultWarehouse?['id']?.toString();
 
     return Scaffold(
       appBar: AppBar(title: Text(widget.title)),
+      floatingActionButton: widget.manage
+          ? FloatingActionButton.extended(onPressed: () => context.push('/catalog/new'), icon: const Icon(Icons.add), label: const Text('Nuevo producto'))
+          : null,
       body: Column(children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),

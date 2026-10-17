@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../app/theme.dart';
 import '../../../core/decimal_value.dart';
@@ -29,7 +30,10 @@ class ProductDetailScreen extends ConsumerWidget {
     final editsCatalog = ref.watch(sessionProvider).value?.can('catalog:manage') ?? false;
 
     return Scaffold(
-      appBar: AppBar(title: Text(product.sku)),
+      appBar: AppBar(
+        title: Text(product.sku),
+        actions: [if (editsCatalog) IconButton(tooltip: 'Administrar producto', icon: const Icon(Icons.edit_note), onPressed: () => context.push('/catalog/${product.id}'))],
+      ),
       floatingActionButton: manifestCounts
           ? FloatingActionButton.extended(onPressed: () => openCountSheet(context, item), icon: const Icon(Icons.fact_check_outlined), label: const Text('Contar'))
           : null,
