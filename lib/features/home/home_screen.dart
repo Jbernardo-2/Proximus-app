@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../app/modules.dart';
 import '../../app/providers.dart';
 import '../../app/theme.dart';
+import '../bodega/presentation/warehouse_dashboard.dart';
 import '../reparto/presentation/driver_dashboard.dart';
 import '../session/background_banner.dart';
 import '../session/session_banner.dart';
@@ -49,6 +50,11 @@ class HomeScreen extends ConsumerWidget {
             const SizedBox(height: 20),
             SyncSummaryCard(onTap: () => context.go('/sync')),
           ] else ...[
+            // Whoever dispatches (warehouse, supervisor) starts from products and what waits to go out.
+            if (manifest?.hasResource('dispatch_orders') ?? false) ...[
+              const WarehouseDashboard(),
+              const SizedBox(height: 20),
+            ],
             SyncSummaryCard(onTap: () => context.go('/sync')),
             const SizedBox(height: 24),
             const Text(

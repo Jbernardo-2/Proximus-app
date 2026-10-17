@@ -7,6 +7,8 @@ import 'package:intl/date_symbol_data_local.dart';
 import 'app/providers.dart';
 import 'app/theme.dart';
 import 'data/database.dart';
+import 'features/bodega/presentation/product_detail_screen.dart';
+import 'features/bodega/presentation/product_search_screen.dart';
 import 'features/home/home_screen.dart';
 import 'features/preventa/presentation/customer_screen.dart';
 import 'features/preventa/presentation/customers_screen.dart';
@@ -75,6 +77,9 @@ final _routerProvider = Provider<GoRouter>((ref) {
               GoRoute(path: 'payment', builder: (_, state) => DeliveryPaymentScreen(runId: state.pathParameters['runId']!, stopId: state.pathParameters['stopId']!)),
             ]),
           ]),
+        ]),
+        GoRoute(path: 'products', builder: (_, state) => ProductSearchScreen(scanOnOpen: state.uri.queryParameters['scan'] == '1'), routes: [
+          GoRoute(path: ':id', builder: (_, state) => ProductDetailScreen(productId: state.pathParameters['id']!)),
         ]),
         GoRoute(path: 'orders/:key', builder: (_, state) => OrderDetailScreen(orderKey: state.pathParameters['key']!)),
       ]),

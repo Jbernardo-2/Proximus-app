@@ -27,7 +27,9 @@ const appModules = [
   ),
   AppModule(label: 'Clientes', icon: Icons.storefront_outlined, path: '/customers', isAvailable: _customers),
   AppModule(label: 'Mi jornada', icon: Icons.local_shipping_outlined, path: '/deliveries', isAvailable: _deliveries),
-  AppModule(label: 'Inventario', icon: Icons.warehouse_outlined, isAvailable: _inventory),
+  AppModule(label: 'Preparar jornadas', icon: Icons.inventory_outlined, isAvailable: _prepares),
+  AppModule(label: 'Conteos', icon: Icons.fact_check_outlined, isAvailable: _counts),
+  AppModule(label: 'Entradas', icon: Icons.move_to_inbox_outlined, isAvailable: _receipts),
   AppModule(label: 'Crédito', icon: Icons.account_balance_wallet_outlined, isAvailable: _credit),
   AppModule(label: 'Reportes', icon: Icons.bar_chart, isAvailable: _reports),
 ];
@@ -40,7 +42,11 @@ bool _customers(SyncManifest manifest, Session session) => manifest.hasResource(
 bool _deliveries(SyncManifest manifest, Session session) =>
     manifest.hasResource('delivery_runs') && manifest.supports('delivery.outcome');
 
-bool _inventory(SyncManifest manifest, Session session) => session.can('inventory:operate');
+bool _prepares(SyncManifest manifest, Session session) => manifest.supports('delivery.prepare');
+
+bool _counts(SyncManifest manifest, Session session) => manifest.supports('inventory.product_count');
+
+bool _receipts(SyncManifest manifest, Session session) => manifest.supports('inventory.receipt');
 
 bool _credit(SyncManifest manifest, Session session) => session.can('credits:configure');
 
