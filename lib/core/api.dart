@@ -100,6 +100,10 @@ class ProximusApi implements SyncApi {
 
   Future<Map<String, dynamic>> delete(String path) => _send(() => _dio.delete(path));
 
+  /// Sends one file as a form field, e.g. a product photo.
+  Future<Map<String, dynamic>> upload(String path, {required String field, required String filePath}) async =>
+      _send(() async => _dio.post(path, data: FormData.fromMap({field: await MultipartFile.fromFile(filePath)})));
+
   Future<Map<String, dynamic>> _send(Future<Response<dynamic>> Function() request) async {
     try {
       final response = await request();

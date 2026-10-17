@@ -8,6 +8,7 @@ import '../../preventa/presentation/product_image.dart';
 import '../application/bodega_providers.dart';
 import '../data/warehouse_catalog.dart';
 import 'barcode_scanner_screen.dart';
+import 'catalog_edit.dart';
 
 /// Find a product by name, code or barcode, with the camera when it is at hand.
 class ProductSearchScreen extends ConsumerStatefulWidget {
@@ -47,7 +48,17 @@ class _ProductSearchScreenState extends ConsumerState<ProductSearchScreen> {
       return;
     }
     setState(() => _search.text = code);
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('El código $code no está registrado en ningún producto.')));
+    final editsCatalog = ref.read(sessionProvider).value?.can('catalog:manage') ?? false;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text('El código $code no está registrado en ningún producto.'),
+      duration: const Duration(seconds: 8),
+      action: editsCatalog && widget.onPick == null
+          ? SnackBarAction(label: 'Asignar', onPressed: () {
+              setState(_search.clear);
+              assignScannedCode(context, code);
+            })
+          : null,
+    ));
   }
 
   void _open(WarehouseProduct item) => widget.onPick == null ? context.push('/products/${item.product.id}') : widget.onPick!(item);

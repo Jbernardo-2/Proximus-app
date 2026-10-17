@@ -7,6 +7,7 @@ import '../../../core/formatting.dart';
 import '../../preventa/presentation/product_image.dart';
 import '../../../app/providers.dart';
 import '../application/bodega_providers.dart';
+import 'catalog_edit.dart';
 import 'count_sheet.dart';
 
 /// Everything the warehouse checks on a product: stock per warehouse and each presentation.
@@ -25,6 +26,7 @@ class ProductDetailScreen extends ConsumerWidget {
     final unit = product.baseUnit ?? 'u';
     final warehouses = ref.watch(warehouseNamesProvider);
     final manifestCounts = ref.watch(sessionProvider).value?.can('inventory:operate') ?? false;
+    final editsCatalog = ref.watch(sessionProvider).value?.can('catalog:manage') ?? false;
 
     return Scaffold(
       appBar: AppBar(title: Text(product.sku)),
@@ -35,7 +37,7 @@ class ProductDetailScreen extends ConsumerWidget {
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
         children: [
           Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            ProductImage(productId: product.id, size: 96),
+            editsCatalog ? EditablePhoto(productId: product.id) : ProductImage(productId: product.id, size: 96),
             const SizedBox(width: 14),
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -77,7 +79,10 @@ class ProductDetailScreen extends ConsumerWidget {
                   presentation.barcode ?? 'Sin código de barras',
                   if (!presentation.isActive) 'Inactiva',
                 ].join(' · ')),
-                trailing: presentation.isSellable ? Text(money(presentation.salePrice), style: const TextStyle(fontWeight: FontWeight.w700)) : const Text('No se vende', style: TextStyle(color: AppColors.muted)),
+                trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+                  presentation.isSellable ? Text(money(presentation.salePrice), style: const TextStyle(fontWeight: FontWeight.w700)) : const Text('No se vende', style: TextStyle(color: AppColors.muted)),
+                  if (editsCatalog) IconButton(tooltip: 'Código de barras', icon: const Icon(Icons.qr_code_2), onPressed: () => openBarcodeSheet(context, product.id, presentation)),
+                ]),
               ),
             ),
         ],
