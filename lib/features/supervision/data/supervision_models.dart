@@ -202,3 +202,36 @@ final class SettlementView {
   /// Counted minus expected: negative is missing, positive is extra.
   DecimalValue difference(DecimalValue counted) => counted - cashToReceive;
 }
+
+/// A customer in the credit portfolio: what they owe and how much is past due.
+final class PortfolioRow {
+  const PortfolioRow({required this.customerId, required this.code, required this.name, required this.outstanding, required this.overdue, required this.committed});
+
+  factory PortfolioRow.fromJson(Map<String, dynamic> json) => PortfolioRow(
+    customerId: json['customer_id'].toString(),
+    code: json['code']?.toString() ?? '',
+    name: json['business_name']?.toString() ?? '',
+    outstanding: _d(json['outstanding_balance']),
+    overdue: _d(json['overdue_balance']),
+    committed: _d(json['committed_credit']),
+  );
+
+  final String customerId;
+  final String code;
+  final String name;
+  final DecimalValue outstanding;
+  final DecimalValue overdue;
+
+  /// On credit orders not delivered yet.
+  final DecimalValue committed;
+}
+
+final class Portfolio {
+  const Portfolio({required this.rows, required this.balance, required this.overdue, required this.debtors, required this.hasMore});
+
+  final List<PortfolioRow> rows;
+  final DecimalValue balance;
+  final DecimalValue overdue;
+  final int debtors;
+  final bool hasMore;
+}

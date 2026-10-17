@@ -7,6 +7,8 @@ import 'package:proximus_app/core/decimal_value.dart';
 import 'package:proximus_app/features/bodega/application/warehouse_run_actions.dart';
 import 'package:proximus_app/features/supervision/application/supervision_providers.dart';
 import 'package:proximus_app/features/supervision/data/supervision_models.dart';
+import 'package:proximus_app/features/preventa/data/preventa_models.dart' show AccountEntry, LocalReceivable;
+import 'package:proximus_app/features/supervision/presentation/credit_screen.dart';
 import 'package:proximus_app/features/supervision/presentation/settlement_screen.dart';
 import 'package:proximus_app/features/supervision/presentation/supervisor_dashboard.dart';
 
@@ -128,5 +130,35 @@ void main() {
       expect(find.textContaining('RUT-2026-000040'), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
+  });
+  testWidgets('the credit portfolio leads with who owes most past due, and a customer shows each invoice', (tester) async {
+    tester.view.physicalSize = const Size(384 * 3, 820 * 3);
+    tester.view.devicePixelRatio = 3;
+    tester.platformDispatcher.textScaleFactorTestValue = 1.1;
+    addTearDown(tester.view.reset);
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+    final rosa = PortfolioRow.fromJson({'customer_id': 'c1', 'code': 'CAMPO-01', 'business_name': 'Pulpería Rosa', 'outstanding_balance': '500.0000', 'overdue_balance': '200.0000', 'committed_credit': '0'});
+
+    await tester.pumpWidget(ProviderScope(
+      overrides: [
+        secureStoreProvider.overrideWithValue(MemorySecureStore(null)),
+        apiProvider.overrideWithValue(null),
+        portfolioProvider((search: '', overdue: false, pages: 1)).overrideWith((ref) async => Portfolio(rows: [rosa], balance: DecimalValue.parse('500'), overdue: DecimalValue.parse('200'), debtors: 1, hasMore: true)),
+        customerCreditProvider('c1').overrideWith((ref) async => (
+          debts: [LocalReceivable.fromJson({'id': 'r1', 'customer_id': 'c1', 'document_number': 'FAC-1', 'original_amount': '300', 'outstanding_amount': '200', 'is_overdue': true, 'due_date': '2026-10-01'})],
+          entries: [AccountEntry.fromJson({'type': 'customer_payment', 'type_label': 'Abono', 'receipt_number': 'ABO-7', 'debit_amount': '0', 'credit_amount': '100', 'occurred_at': '2026-10-10T10:00:00Z'})],
+        )),
+      ],
+      child: const MaterialApp(home: CreditScreen()),
+    ));
+    await tester.pumpAndSettle();
+
+    expect(find.text('vencido L 200.00'), findsOneWidget);
+    expect(find.text('Ver más clientes'), findsOneWidget);
+    await tester.tap(find.text('Pulpería Rosa'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('días de atraso'), findsOneWidget);
+    expect(find.text('−L 100.00'), findsOneWidget, reason: 'a payment lowers the debt');
+    expect(tester.takeException(), isNull);
   });
 }

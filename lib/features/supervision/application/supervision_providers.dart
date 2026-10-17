@@ -4,6 +4,7 @@ import '../../../app/providers.dart';
 import '../../../core/api.dart';
 import '../../../core/decimal_value.dart';
 import '../../bodega/application/warehouse_run_actions.dart';
+import '../../preventa/data/preventa_models.dart' show AccountEntry, LocalReceivable;
 import '../data/supervision_models.dart';
 
 ProximusApi _api(Ref ref) => ref.watch(apiProvider) ?? (throw ApiException('Inicia sesión con señal para supervisar.'));
@@ -60,3 +61,35 @@ class SettlementActions {
     _ref.invalidate(fieldActivityProvider);
   }
 }
+
+/// The credit portfolio, debtors first: [pages] grows as the supervisor asks for more.
+final portfolioProvider = FutureProvider.autoDispose.family<Portfolio, ({String search, bool overdue, int pages})>((ref, query) async {
+  final api = _api(ref);
+  final rows = <PortfolioRow>[];
+  Map<String, dynamic> totals = const {};
+  var hasMore = false;
+  for (var page = 1; page <= query.pages; page++) {
+    final response = await api.get('/credits', query: {'search': query.search, if (query.overdue) 'overdue': 1, 'page': page});
+    rows.addAll([for (final json in (response['data'] as List).cast<Map>()) PortfolioRow.fromJson(json.cast<String, dynamic>())]);
+    totals = (response['totals'] as Map).cast<String, dynamic>();
+    final meta = (response['meta'] as Map).cast<String, dynamic>();
+    hasMore = (meta['current_page'] as num) < (meta['last_page'] as num);
+    if (!hasMore) break;
+  }
+  return Portfolio(
+    rows: rows,
+    balance: DecimalValue.parse(totals['portfolio_balance'] ?? '0'),
+    overdue: DecimalValue.parse(totals['overdue_balance'] ?? '0'),
+    debtors: (totals['debtors_count'] as num?)?.toInt() ?? 0,
+    hasMore: hasMore,
+  );
+});
+
+/// One customer's debts and account movements, read now.
+final customerCreditProvider = FutureProvider.autoDispose.family<({List<LocalReceivable> debts, List<AccountEntry> entries}), String>((ref, customerId) async {
+  final data = ((await _api(ref).get('/customers/$customerId/credit'))['data'] as Map).cast<String, dynamic>();
+  return (
+    debts: [for (final json in (data['open_receivables'] as List).cast<Map>()) LocalReceivable.fromJson(json.cast<String, dynamic>())],
+    entries: [for (final json in (data['recent_entries'] as List).cast<Map>()) AccountEntry.fromJson(json.cast<String, dynamic>())],
+  );
+});

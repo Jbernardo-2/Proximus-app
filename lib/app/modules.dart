@@ -33,7 +33,7 @@ const appModules = [
   AppModule(label: 'Productos', icon: Icons.category_outlined, path: '/catalog', isAvailable: _managesCatalog),
   AppModule(label: 'Campo', icon: Icons.map_outlined, path: '/field', isAvailable: _supervises),
   AppModule(label: 'Liquidar', icon: Icons.point_of_sale_outlined, path: '/settlements', isAvailable: _settles),
-  AppModule(label: 'Crédito', icon: Icons.account_balance_wallet_outlined, isAvailable: _credit),
+  AppModule(label: 'Crédito', icon: Icons.account_balance_wallet_outlined, path: '/credit', isAvailable: _credit),
   AppModule(label: 'Reportes', icon: Icons.bar_chart, isAvailable: _reports),
 ];
 

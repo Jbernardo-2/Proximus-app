@@ -53,7 +53,10 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Ana Preventista'), findsOneWidget);
 
-    await tester.tap(find.byTooltip('Ajustes'));
+    // Settings live at the bottom of the side menu.
+    await tester.tap(find.byIcon(Icons.menu));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Ajustes'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Cambiar de usuario o cerrar sesión'));
     await tester.pumpAndSettle();
