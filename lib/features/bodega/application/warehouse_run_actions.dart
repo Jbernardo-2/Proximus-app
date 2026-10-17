@@ -104,3 +104,20 @@ class WarehouseRunActions {
     await _queue('delivery.load', 'Carga de ${run.title}', {'delivery_run_id': run.id});
   }
 }
+
+/// The stock a run is checked against: the physical stock of its warehouse (base units)
+/// and what other runs loaded on this phone already took from it.
+final runStockProvider = Provider.family<({Map<String, DecimalValue> onHand, Map<String, DecimalValue> committed}), String>((ref, runId) {
+  final run = ref.watch(warehouseRunProvider(runId));
+  final warehouseId = run?.warehouseId ?? ref.watch(manifestProvider).value?.defaultWarehouse?['id']?.toString();
+  return (
+    onHand: {
+      for (final json in ref.watch(localRecordsProvider('stocks')).value ?? const <Map<String, dynamic>>[])
+        if (json['warehouse_id']?.toString() == warehouseId) json['product_id'].toString(): DecimalValue.parse(json['quantity_on_hand'] ?? '0'),
+    },
+    committed: committedOnPhone(ref.watch(warehouseRunsProvider), exceptRunId: runId),
+  );
+});
+
+/// When the stock was last downloaded.
+final stockPulledAtProvider = Provider<DateTime?>((ref) => DateTime.tryParse(ref.watch(syncStateProvider('pulled_at:stocks')).value ?? ''));

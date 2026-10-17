@@ -12,6 +12,7 @@ final class PickLine {
     required this.productName,
     required this.presentationName,
     required this.requested,
+    required this.conversionFactor,
     this.prepared,
   });
 
@@ -21,6 +22,9 @@ final class PickLine {
   final String productName;
   final String presentationName;
   final DecimalValue requested;
+
+  /// Base units per unit of the presentation: the stock is counted in base units.
+  final DecimalValue conversionFactor;
 
   /// Null while nobody has picked it.
   final DecimalValue? prepared;
@@ -32,6 +36,7 @@ final class PickLine {
     productName: productName,
     presentationName: presentationName,
     requested: requested,
+    conversionFactor: conversionFactor,
     prepared: value,
   );
 }
@@ -43,6 +48,7 @@ final class RunOrder {
     required this.customerName,
     required this.total,
     required this.lines,
+    this.visitOrder = 0,
     this.runOrderId,
     this.routeName,
     this.pendingAssignId,
@@ -54,6 +60,9 @@ final class RunOrder {
   final String? routeName;
   final DecimalValue total;
   final List<PickLine> lines;
+
+  /// Stop number on the route: when stock is short, earlier stops are filled first.
+  final int visitOrder;
 
   /// The server's run order; null until the assignment reaches it.
   final String? runOrderId;
@@ -68,6 +77,7 @@ final class RunOrder {
     routeName: routeName,
     total: total,
     lines: lines ?? this.lines,
+    visitOrder: visitOrder,
     runOrderId: runOrderId ?? this.runOrderId,
     pendingAssignId: pendingAssignId,
   );
@@ -85,6 +95,7 @@ final class WarehouseRun {
     this.vehicle,
     this.preparationStartedBy,
     this.pending = false,
+    this.loadedOnPhone = false,
     this.rejections = const [],
   });
 
@@ -105,6 +116,9 @@ final class WarehouseRun {
   /// Something about this run is still on the phone.
   final bool pending;
 
+  /// Loaded on this phone, so the downloaded stock does not show it left yet.
+  final bool loadedOnPhone;
+
   /// What the server refused, to show on the run.
   final List<String> rejections;
 
@@ -119,7 +133,7 @@ final class WarehouseRun {
 
   List<PickLine> get lines => [for (final order in orders) ...order.lines];
 
-  WarehouseRun copyWith({String? runNumber, String? status, int? preparationStartedBy, List<RunOrder>? orders, bool? pending, List<String>? rejections}) => WarehouseRun(
+  WarehouseRun copyWith({String? runNumber, String? status, int? preparationStartedBy, List<RunOrder>? orders, bool? pending, bool? loadedOnPhone, List<String>? rejections}) => WarehouseRun(
     id: id,
     runNumber: runNumber ?? this.runNumber,
     status: status ?? this.status,
@@ -130,6 +144,7 @@ final class WarehouseRun {
     preparationStartedBy: preparationStartedBy ?? this.preparationStartedBy,
     orders: orders ?? this.orders,
     pending: pending ?? this.pending,
+    loadedOnPhone: loadedOnPhone ?? this.loadedOnPhone,
     rejections: rejections ?? this.rejections,
   );
 }
@@ -165,6 +180,7 @@ DispatchOrder dispatchOrderFromJson(Map<String, dynamic> json) => DispatchOrder(
           productName: item['product_name']?.toString() ?? '',
           presentationName: item['presentation_name']?.toString() ?? '',
           requested: _d(item['quantity']),
+          conversionFactor: item['conversion_factor'] == null ? DecimalValue.parse('1') : _d(item['conversion_factor']),
         ),
     ],
   ),
@@ -183,6 +199,7 @@ WarehouseRun _runFromJson(Map<String, dynamic> json) => WarehouseRun(
     for (final stop in (json['orders'] as List? ?? const []).cast<Map>())
       RunOrder(
         runOrderId: stop['id'].toString(),
+        visitOrder: (stop['visit_order'] as num?)?.toInt() ?? 0,
         orderId: (stop['order'] as Map?)?['id']?.toString() ?? '',
         orderNumber: (stop['order'] as Map?)?['order_number']?.toString() ?? '',
         customerName: (stop['order'] as Map?)?['customer_name']?.toString() ?? '',
@@ -197,6 +214,7 @@ WarehouseRun _runFromJson(Map<String, dynamic> json) => WarehouseRun(
               productName: item['product_name']?.toString() ?? '',
               presentationName: item['presentation_name']?.toString() ?? '',
               requested: _d(item['requested_quantity']),
+              conversionFactor: item['conversion_factor'] == null ? DecimalValue.parse('1') : _d(item['conversion_factor']),
               // Untouched lines come as zero; only a prepared order counts as picked.
               prepared: stop['prepared_at'] == null ? null : _d(item['prepared_quantity']),
             ),
@@ -267,6 +285,7 @@ WarehouseRun _runFromJson(Map<String, dynamic> json) => WarehouseRun(
             routeName: order.order.routeName,
             total: order.order.total,
             lines: order.order.lines,
+            visitOrder: (data?['visit_order'] as num?)?.toInt() ?? run.orders.fold<int>(0, (top, existing) => existing.visitOrder > top ? existing.visitOrder : top) + 1,
             runOrderId: data?['id']?.toString(),
             pendingAssignId: pending ? operation.id : null,
           ),
@@ -279,15 +298,17 @@ WarehouseRun _runFromJson(Map<String, dynamic> json) => WarehouseRun(
       case 'delivery.prepare_start':
         runs[run.id] = run.copyWith(status: run.isDraft ? 'preparing' : run.status, preparationStartedBy: run.preparationStartedBy ?? userId, pending: run.pending || pending);
       case 'delivery.prepare':
+        // Sending again after a refusal: the old refusal no longer applies.
+        runs[run.id] = runs[run.id]!.copyWith(rejections: const []);
         final quantities = {
           for (final item in (payload['items'] as List? ?? const []).cast<Map>()) item['order_item_id']?.toString(): _d(item['prepared_quantity']),
         };
-        runs[run.id] = run.copyWith(pending: run.pending || pending, orders: [
+        runs[run.id] = runs[run.id]!.copyWith(pending: run.pending || pending, orders: [
           for (final order in run.orders)
             order.copyWith(lines: [for (final line in order.lines) quantities.containsKey(line.orderItemId) ? line.withPrepared(quantities[line.orderItemId]) : line]),
         ]);
       case 'delivery.load':
-        runs[run.id] = run.copyWith(status: run.isPreparing ? 'loaded' : run.status, pending: run.pending || pending);
+        runs[run.id] = run.copyWith(status: run.isPreparing ? 'loaded' : run.status, pending: run.pending || pending, loadedOnPhone: true, rejections: const []);
     }
   }
 
@@ -364,3 +385,86 @@ List<RunOrder> emptyOrders(WarehouseRun run, Map<String, DecimalValue> quantitie
   for (final order in run.orders)
     if (order.lines.every((line) => (quantities[line.orderItemId] ?? DecimalValue.zero).isZero)) order,
 ];
+
+/// The base units a line takes from the warehouse: what was picked, or what was asked while unpicked.
+DecimalValue _baseNeed(PickLine line, Map<String, DecimalValue> draft, {bool unpickedAsRequested = true}) =>
+    (draft[line.orderItemId] ?? line.prepared ?? (unpickedAsRequested ? line.requested : DecimalValue.zero)) * line.conversionFactor;
+
+/// Base units already on trucks loaded on this phone that the downloaded stock does not show yet.
+Map<String, DecimalValue> committedOnPhone(List<WarehouseRun> runs, {required String exceptRunId}) {
+  final committed = <String, DecimalValue>{};
+  for (final run in runs) {
+    if (run.id == exceptRunId || !run.loadedOnPhone) continue;
+    for (final line in run.lines) {
+      committed[line.productId] = (committed[line.productId] ?? DecimalValue.zero) + _baseNeed(line, const {});
+    }
+  }
+  return committed;
+}
+
+final class ProductStock {
+  const ProductStock({required this.available, required this.needed});
+
+  /// Physical stock of the run's warehouse left for this run, in base units.
+  final DecimalValue available;
+
+  /// What the run takes now, in base units.
+  final DecimalValue needed;
+
+  DecimalValue get missing => needed.compareTo(available) > 0 ? needed - available : DecimalValue.zero;
+  bool get isShort => !missing.isZero;
+}
+
+/// Per product of the run: what the warehouse has for it against what the run takes,
+/// the same check the server makes before loading. With [unpickedAsRequested] off, only
+/// what was already picked counts: what is typed is never blocked by lines nobody reviewed.
+Map<String, ProductStock> stockForRun(
+  WarehouseRun run,
+  Map<String, DecimalValue> draft, {
+  required Map<String, DecimalValue> onHand,
+  required Map<String, DecimalValue> committed,
+  bool unpickedAsRequested = true,
+}) {
+  final needed = <String, DecimalValue>{};
+  for (final line in run.lines) {
+    needed[line.productId] = (needed[line.productId] ?? DecimalValue.zero) + _baseNeed(line, draft, unpickedAsRequested: unpickedAsRequested);
+  }
+  return {
+    for (final entry in needed.entries)
+      entry.key: ProductStock(available: (onHand[entry.key] ?? DecimalValue.zero) - (committed[entry.key] ?? DecimalValue.zero), needed: entry.value),
+  };
+}
+
+/// Fills [targets] with all they asked for, as far as the stock goes. Stops earlier on
+/// the route are served first: an earlier stop keeps its share even while unpicked.
+Map<String, DecimalValue> fillByVisit(
+  WarehouseRun run,
+  Map<String, DecimalValue> draft,
+  Iterable<String> targets, {
+  required Map<String, DecimalValue> onHand,
+  required Map<String, DecimalValue> committed,
+  required bool Function(String productId) allowsDecimal,
+}) {
+  final entries = [for (final order in run.orders) for (final line in order.lines) (order: order, line: line)];
+  final wanted = targets.toSet();
+  final result = <String, DecimalValue>{};
+  final ordered = entries.where((entry) => wanted.contains(entry.line.orderItemId)).toList()
+    ..sort((a, b) => a.order.visitOrder.compareTo(b.order.visitOrder));
+
+  for (final target in ordered) {
+    final productId = target.line.productId;
+    var left = (onHand[productId] ?? DecimalValue.zero) - (committed[productId] ?? DecimalValue.zero);
+    for (final other in entries) {
+      if (other.line.productId != productId || other.line.orderItemId == target.line.orderItemId) continue;
+      // Targets still to fill take what remains after this one.
+      if (wanted.contains(other.line.orderItemId) && !result.containsKey(other.line.orderItemId)) continue;
+      final value = result[other.line.orderItemId] ?? draft[other.line.orderItemId] ?? other.line.prepared;
+      // Unpicked lines of earlier stops keep their share; later ones wait for what remains.
+      final counted = value ?? (other.order.visitOrder < target.order.visitOrder ? other.line.requested : null);
+      if (counted != null) left = left - counted * other.line.conversionFactor;
+    }
+    final fits = left.isNegative || left.isZero ? DecimalValue.zero : left.divide(target.line.conversionFactor, scale: allowsDecimal(productId) ? 6 : 0);
+    result[target.line.orderItemId] = fits.compareTo(target.line.requested) < 0 ? fits : target.line.requested;
+  }
+  return result;
+}

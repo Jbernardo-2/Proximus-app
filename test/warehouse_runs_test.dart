@@ -18,6 +18,7 @@ DecimalValue d(String value) => DecimalValue.parse(value);
 final now = DateTime(2026, 10, 16, 9);
 
 Map<String, dynamic> dispatchJson(String id, String customer, List<(String item, String presentation, String quantity)> items) => {
+  // Frijol comes in sacks of 24 pounds: the stock is counted in pounds.
   'id': id,
   'order_number': 'PED-$id',
   'customer_name': customer,
@@ -26,7 +27,7 @@ Map<String, dynamic> dispatchJson(String id, String customer, List<(String item,
   'total': '100.0000',
   'items': [
     for (final item in items)
-      {'id': item.$1, 'product_id': 'prod-${item.$2}', 'product_presentation_id': item.$2, 'product_name': 'Arroz ${item.$2}', 'presentation_name': 'Fardo', 'quantity': item.$3},
+      {'id': item.$1, 'product_id': 'prod-${item.$2}', 'product_presentation_id': item.$2, 'product_name': 'Arroz ${item.$2}', 'presentation_name': 'Fardo', 'quantity': item.$3, 'conversion_factor': item.$2 == 'frijol' ? '24.000000' : '1.000000'},
   ],
 };
 
@@ -131,6 +132,50 @@ void main() {
     expect(merged.available.map((dispatch) => dispatch.order.orderId), containsAll(['o9', 'o1', 'o2']));
   });
 
+  group('stock', () {
+    final run = merge(offlineDay()).runs.single;
+    final onHand = {'prod-arroz': d('5'), 'prod-frijol': d('30')};
+    bool integers(String _) => false;
+
+    test('each product is checked in base units against the warehouse, as the server does before loading', () {
+      final stock = stockForRun(run, const {}, onHand: onHand, committed: const {});
+
+      expect(stock['prod-arroz']!.needed, d('7'));
+      expect(stock['prod-arroz']!.missing, d('2'));
+      expect(stock['prod-frijol']!.needed, d('48'), reason: '2 sacks of 24');
+      expect(stock['prod-frijol']!.missing, d('18'));
+      expect(stockForRun(run, {'i1': d('2'), 'i3': d('3'), 'i2': d('1')}, onHand: onHand, committed: const {}).values.any((product) => product.isShort), isFalse);
+    });
+
+    test('what is short goes to the earlier stops first, in whole sacks', () {
+      expect(fillByVisit(run, const {}, ['i1', 'i3'], onHand: onHand, committed: const {}, allowsDecimal: integers), {'i1': d('4'), 'i3': d('1')});
+      expect(fillByVisit(run, const {}, ['i3'], onHand: onHand, committed: const {}, allowsDecimal: integers), {'i3': d('1')}, reason: 'stop 1 keeps its share while unpicked');
+      expect(fillByVisit(run, const {}, ['i2'], onHand: onHand, committed: const {}, allowsDecimal: integers), {'i2': d('1')}, reason: '30 pounds fill one sack of 24');
+    });
+
+    test('another run loaded on this phone already took its part of the stock', () {
+      final other = WarehouseRun(id: 'run2', status: 'loaded', warehouseId: 'w1', driverName: '', loadedOnPhone: true, orders: [
+        RunOrder(orderId: 'x', orderNumber: 'X', customerName: '', total: DecimalValue.zero, lines: [
+          PickLine(orderItemId: 'x1', productId: 'prod-arroz', presentationId: 'arroz', productName: '', presentationName: '', requested: d('3'), conversionFactor: d('1'), prepared: d('3')),
+        ]),
+      ]);
+      final committed = committedOnPhone([run, other], exceptRunId: run.id);
+
+      expect(committed, {'prod-arroz': d('3')});
+      expect(stockForRun(run, const {}, onHand: onHand, committed: committed)['prod-arroz']!.available, d('2'));
+    });
+  });
+
+  test('confirming again after a refused load clears the old refusal', () {
+    final run = merge([
+      ...offlineDay(),
+      op(5, 'delivery.load', {'delivery_run_id': 'run1'}, status: OutboxStatus.rejected, message: 'No alcanza la existencia.'),
+      op(6, 'delivery.prepare', {'delivery_run_id': 'run1', 'items': []}),
+    ]).runs.single;
+
+    expect(run.rejections, isEmpty);
+  });
+
   testWidgets('the picking screen lists each presentation once and holds the load until all are reviewed', (tester) async {
     tester.view.physicalSize = const Size(384 * 3, 820 * 3);
     tester.view.devicePixelRatio = 3;
@@ -149,7 +194,11 @@ void main() {
         localRecordsProvider('dispatch_orders').overrideWith((ref) => Stream.value(dispatch)),
         localRecordsProvider('drivers').overrideWith((ref) => Stream.value(const [{'id': 4, 'name': 'Carlos'}])),
         localRecordsProvider('products').overrideWith((ref) => Stream.value(const [])),
-        localRecordsProvider('stocks').overrideWith((ref) => Stream.value(const [])),
+        localRecordsProvider('stocks').overrideWith((ref) => Stream.value(const [
+          {'warehouse_id': 'w1', 'product_id': 'prod-arroz', 'quantity_on_hand': '5.000000'},
+          {'warehouse_id': 'w1', 'product_id': 'prod-frijol', 'quantity_on_hand': '100.000000'},
+        ])),
+        syncStateProvider('pulled_at:stocks').overrideWith((ref) => Stream.value(DateTime.now().toIso8601String())),
         outboxRowsProvider.overrideWith((ref) => Stream.value(offlineDay())),
         syncStateProvider('pulled_at:delivery_runs').overrideWith((ref) => Stream.value(null)),
         syncStateProvider('picking:run1').overrideWith((ref) => Stream.value(picked.isEmpty ? null : jsonEncode(picked))),
@@ -162,5 +211,13 @@ void main() {
     expect(find.text('0 de 2 productos revisados'), findsOneWidget);
     expect(find.text('Faltan 2 por revisar'), findsOneWidget);
     expect(find.text('Arroz arroz'), findsOneWidget);
+    expect(find.textContaining('No alcanza 1 producto'), findsOneWidget);
+    expect(find.text('Hay 5 u · faltan 2'), findsOneWidget);
+
+    await tester.tap(find.text('Por pedido'));
+    await tester.pumpAndSettle();
+    expect(find.text('Pulpería Rosa'), findsOneWidget);
+    expect(find.text('PED-o1 · 0 de 2 líneas'), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 }
