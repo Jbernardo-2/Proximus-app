@@ -158,6 +158,7 @@ void main() {
     await tester.tap(find.text('Pulpería Rosa'));
     await tester.pumpAndSettle();
     expect(find.textContaining('días de atraso'), findsOneWidget);
+    expect(find.text('Registrar abono'), findsOneWidget);
     expect(find.text('−L 100.00'), findsOneWidget, reason: 'a payment lowers the debt');
     expect(tester.takeException(), isNull);
   });

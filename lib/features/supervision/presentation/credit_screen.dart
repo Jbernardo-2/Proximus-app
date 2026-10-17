@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../../app/theme.dart';
@@ -144,6 +145,17 @@ class _CustomerCreditScreen extends ConsumerWidget {
               _Total(label: 'Vencido', value: money(row.overdue), color: AppColors.danger),
               _Total(label: 'Por entregar', value: money(row.committed)),
             ]),
+            const SizedBox(height: 12),
+            // The same payment flow as the salesperson's (works offline); the invoices refresh on return.
+            if (!row.outstanding.isZero)
+              FilledButton.icon(
+                onPressed: () async {
+                  await context.push('/payment/${row.customerId}');
+                  ref.invalidate(customerCreditProvider(row.customerId));
+                },
+                icon: const Icon(Icons.payments_outlined),
+                label: const Text('Registrar abono'),
+              ),
             const SizedBox(height: 16),
             Text('Facturas pendientes (${credit.debts.length})', style: const TextStyle(fontWeight: FontWeight.w700)),
             if (credit.debts.isEmpty) const Text('No debe nada.', style: TextStyle(color: AppColors.muted)),
