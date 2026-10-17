@@ -286,6 +286,8 @@ final class LocalProduct {
     required this.allowsDecimal,
     required this.isActive,
     required this.presentations,
+    this.tracksLots = false,
+    this.tracksExpiration = false,
     this.category,
     this.brand,
     this.baseUnit,
@@ -300,6 +302,8 @@ final class LocalProduct {
         brand: _text(json['brand']),
         baseUnit: _text(json['base_unit']),
         allowsDecimal: json['allows_decimal'] == true,
+        tracksLots: json['tracks_lots'] == true,
+        tracksExpiration: json['tracks_expiration'] == true,
         isActive: json['is_active'] == true,
         imageUrl: _text(json['image_url']),
         presentations: [
@@ -316,6 +320,10 @@ final class LocalProduct {
   final String? baseUnit;
   final bool allowsDecimal;
   final bool isActive;
+
+  /// A warehouse entry of this product needs its lot number / expiry date.
+  final bool tracksLots;
+  final bool tracksExpiration;
   final String? imageUrl;
   final List<LocalPresentation> presentations;
 

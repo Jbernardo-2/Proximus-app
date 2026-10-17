@@ -29,7 +29,7 @@ const appModules = [
   AppModule(label: 'Mi jornada', icon: Icons.local_shipping_outlined, path: '/deliveries', isAvailable: _deliveries),
   AppModule(label: 'Jornadas de bodega', icon: Icons.inventory_outlined, path: '/warehouse-runs', isAvailable: _prepares),
   AppModule(label: 'Conteos', icon: Icons.fact_check_outlined, path: '/counts', isAvailable: _counts),
-  AppModule(label: 'Entradas', icon: Icons.move_to_inbox_outlined, isAvailable: _receipts),
+  AppModule(label: 'Entradas', icon: Icons.move_to_inbox_outlined, path: '/receipts', isAvailable: _receipts),
   AppModule(label: 'Crédito', icon: Icons.account_balance_wallet_outlined, isAvailable: _credit),
   AppModule(label: 'Reportes', icon: Icons.bar_chart, isAvailable: _reports),
 ];

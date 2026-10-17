@@ -121,6 +121,7 @@ class _NewRunSheetState extends ConsumerState<NewRunSheet> {
           const Text('No se pudieron leer los repartidores. Revisa la señal.', style: TextStyle(color: AppColors.danger))
         else
           DropdownButtonFormField<String>(
+            isExpanded: true,
             initialValue: _driverId,
             decoration: const InputDecoration(labelText: 'Repartidor'),
             items: [for (final driver in drivers.entries) DropdownMenuItem(value: driver.key, child: Text(driver.value))],
@@ -128,6 +129,7 @@ class _NewRunSheetState extends ConsumerState<NewRunSheet> {
           ),
         const SizedBox(height: 12),
         DropdownButtonFormField<String?>(
+          isExpanded: true,
           initialValue: _vehicleId,
           decoration: const InputDecoration(labelText: 'Vehículo (opcional)'),
           items: [
@@ -139,6 +141,7 @@ class _NewRunSheetState extends ConsumerState<NewRunSheet> {
         if (warehouses.length > 1) ...[
           const SizedBox(height: 12),
           DropdownButtonFormField<String>(
+            isExpanded: true,
             initialValue: warehouseId,
             decoration: const InputDecoration(labelText: 'Bodega'),
             items: [for (final warehouse in warehouses.entries) DropdownMenuItem(value: warehouse.key, child: Text(warehouse.value))],

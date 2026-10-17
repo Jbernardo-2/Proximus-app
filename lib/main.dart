@@ -9,8 +9,10 @@ import 'app/theme.dart';
 import 'data/database.dart';
 import 'features/bodega/presentation/assign_orders_screen.dart';
 import 'features/bodega/presentation/counts_screen.dart';
+import 'features/bodega/presentation/new_receipt_screen.dart';
 import 'features/bodega/presentation/product_detail_screen.dart';
 import 'features/bodega/presentation/product_search_screen.dart';
+import 'features/bodega/presentation/receipts_screen.dart';
 import 'features/bodega/presentation/warehouse_run_screen.dart';
 import 'features/bodega/presentation/warehouse_runs_screen.dart';
 import 'features/home/home_screen.dart';
@@ -91,6 +93,10 @@ final _routerProvider = Provider<GoRouter>((ref) {
           ]),
         ]),
         GoRoute(path: 'counts', builder: (_, _) => const CountsScreen()),
+        GoRoute(path: 'receipts', builder: (_, _) => const ReceiptsScreen(), routes: [
+          GoRoute(path: 'new', builder: (_, _) => const NewReceiptScreen()),
+          GoRoute(path: ':id', builder: (_, state) => ReceiptDetailScreen(receiptId: state.pathParameters['id']!)),
+        ]),
         GoRoute(path: 'orders/:key', builder: (_, state) => OrderDetailScreen(orderKey: state.pathParameters['key']!)),
       ]),
     ],

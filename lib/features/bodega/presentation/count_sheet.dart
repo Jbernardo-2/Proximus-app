@@ -124,6 +124,7 @@ class _CountSheetState extends ConsumerState<CountSheet> {
           if (warehouses.length > 1) ...[
             const SizedBox(height: 12),
             DropdownButtonFormField<String>(
+              isExpanded: true,
               initialValue: warehouseId,
               decoration: const InputDecoration(labelText: 'Bodega'),
               items: [for (final warehouse in warehouses.entries) DropdownMenuItem(value: warehouse.key, child: Text(warehouse.value))],

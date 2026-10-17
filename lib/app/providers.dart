@@ -569,7 +569,7 @@ class ProductImagesController extends Notifier<Map<String, String>> {
       final products = [for (final row in rows) decodeRecord(row.data)];
       // Products downloaded before photos existed in the contract: download the catalog
       // again once (products only change by delta, so they would never bring their photo).
-      if (products.any((product) => product['deleted'] != true && !product.containsKey('image_version'))) {
+      if (products.any((product) => product['deleted'] != true && (!product.containsKey('image_version') || !product.containsKey('tracks_lots')))) {
         await db.writeState('cursor:products', null);
         unawaited(ref.read(syncProvider.notifier).sync());
         return;
