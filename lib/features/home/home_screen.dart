@@ -7,6 +7,7 @@ import '../../app/providers.dart';
 import '../../app/brand.dart';
 import '../../app/theme.dart';
 import '../bodega/presentation/warehouse_dashboard.dart';
+import '../notifications/notices_screen.dart';
 import '../supervision/presentation/supervisor_dashboard.dart';
 import '../reparto/presentation/driver_dashboard.dart';
 import '../session/background_banner.dart';
@@ -42,6 +43,7 @@ class HomeScreen extends ConsumerWidget {
             Text('${roleLabels[session.role] ?? session.role} · Teléfono ${session.deviceCode}', style: const TextStyle(fontSize: 13, color: AppColors.muted)),
           ],
         ),
+        actions: const [NoticesBell()],
       ),
       // Every option lives in the menu; the home keeps only what the day needs.
       drawer: _Menu(modules: ready, userName: session.userName, subtitle: '${roleLabels[session.role] ?? session.role} · Teléfono ${session.deviceCode}'),
