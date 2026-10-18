@@ -93,3 +93,30 @@ final customerCreditProvider = FutureProvider.autoDispose.family<({List<LocalRec
     entries: [for (final json in (data['recent_entries'] as List).cast<Map>()) AccountEntry.fromJson(json.cast<String, dynamic>())],
   );
 });
+
+/// A run read now, as the server sends it, for its stops to be reviewed.
+final runRecordProvider = Provider.autoDispose.family<AsyncValue<Map<String, dynamic>?>, String>(
+  (ref, runId) => ref.watch(liveResourceProvider('delivery_runs')).whenData((records) => records.where((run) => run['id'].toString() == runId).firstOrNull),
+);
+
+final runCorrectionsProvider = Provider.autoDispose<RunCorrections>((ref) => RunCorrections(ref));
+
+/// What a supervisor fixes on a run before settling it, online.
+class RunCorrections {
+  RunCorrections(this._ref);
+
+  final Ref _ref;
+
+  Future<void> _send(Future<void> Function(ProximusApi api) call) async {
+    await call(_ref.read(apiProvider) ?? (throw ApiException('Sin conexión con el servidor.')));
+    _ref.invalidate(liveResourceProvider('delivery_runs'));
+    _ref.invalidate(managementPanelProvider);
+    _ref.invalidate(fieldActivityProvider);
+  }
+
+  Future<void> voidPayment(String runId, String runOrderId, String paymentId, String reason) =>
+      _send((api) => api.post('/delivery-runs/$runId/orders/$runOrderId/payments/$paymentId/void', {'reason': reason}));
+
+  /// The stop goes back to the driver, who records it again; the run returns to the road.
+  Future<void> reopenStop(String runId, String runOrderId) => _send((api) => api.post('/delivery-runs/$runId/orders/$runOrderId/outcome/reopen'));
+}

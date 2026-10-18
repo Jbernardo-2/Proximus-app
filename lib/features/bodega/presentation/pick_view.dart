@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../app/providers.dart';
 import '../../../app/theme.dart';
 import '../../../core/api.dart';
 import '../../../core/decimal_value.dart';
@@ -134,7 +135,7 @@ class _PickViewState extends ConsumerState<PickView> {
         context: context,
         builder: (context) => AlertDialog(
           title: const Text('Pedido sin mercancía'),
-          content: Text('${empty.map((order) => '${order.orderNumber} · ${order.customerName}').join('\n')}\n\nNo se puede cargar un pedido vacío. Prepara al menos una línea o pide al supervisor que lo retire de la jornada.'),
+          content: Text('${empty.map((order) => '${order.orderNumber} · ${order.customerName}').join('\n')}\n\nNo se puede cargar un pedido vacío. Prepara al menos una línea o quítalo de la jornada (un supervisor puede hacerlo desde «Por pedido»).'),
           actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Entendido'))],
         ),
       );
@@ -479,7 +480,31 @@ class _PickSheetState extends ConsumerState<_PickSheet> {
             ),
           ),
         ]),
+        // Only a supervisor takes an order off a run being prepared; it goes back to the orders waiting.
+        if (widget.byOrder && (ref.watch(sessionProvider).value?.can('deliveries:settle') ?? false))
+          TextButton.icon(
+            onPressed: _saving ? null : _takeOff,
+            style: TextButton.styleFrom(foregroundColor: AppColors.danger),
+            icon: const Icon(Icons.remove_circle_outline),
+            label: const Text('Quitar pedido de la jornada'),
+          ),
       ]),
     );
+  }
+
+  Future<void> _takeOff() async {
+    final order = widget.entries.first.order;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Quitar pedido'),
+        content: Text('${order.orderNumber} · ${order.customerName} sale de esta jornada y vuelve a los pedidos sin jornada, con su reserva. Lo preparado de este pedido se descarta.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancelar')),
+          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Quitar')),
+        ],
+      ),
+    );
+    if (confirmed == true) await _save(() => ref.read(warehouseRunActionsProvider).unassign(widget.run, order));
   }
 }

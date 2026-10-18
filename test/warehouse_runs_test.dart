@@ -128,4 +128,35 @@ void main() {
     expect(find.text('PED-o1 · 0 de 2 líneas'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
+  testWidgets('a supervisor can take an order off a run being prepared; a keeper cannot', (tester) async {
+    tester.view.physicalSize = const Size(384 * 3, 820 * 3);
+    tester.view.devicePixelRatio = 3;
+    addTearDown(tester.view.reset);
+
+    for (final (abilities, shows) in [(const ['deliveries:prepare', 'deliveries:settle'], true), (const ['deliveries:prepare'], false)]) {
+      await tester.pumpWidget(ProviderScope(
+        key: UniqueKey(),
+        overrides: [
+          secureStoreProvider.overrideWithValue(MemorySecureStore(
+            Session(serverUrl: 'http://test', token: 't', user: const {'id': 7, 'name': 'Lara', 'role': 'supervisor'}, device: const {'code': 'S001'}, abilities: abilities),
+          )),
+          apiProvider.overrideWithValue(null),
+          manifestProvider.overrideWithValue(AsyncData(SyncManifest.fromJson({'default_warehouse': {'id': 'w1', 'name': 'Bodega central'}}))),
+          liveResourceProvider('delivery_runs').overrideWith((ref) async => [runJson()]),
+          liveResourceProvider('stocks').overrideWith((ref) async => const []),
+          localRecordsProvider('products').overrideWith((ref) => Stream.value(const [])),
+          localRecordsProvider('stocks').overrideWith((ref) => Stream.value(const [])),
+        ],
+        child: const MaterialApp(home: WarehouseRunScreen(runId: 'run1')),
+      ));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Por pedido'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Pulpería Rosa'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Quitar pedido de la jornada'), shows ? findsOneWidget : findsNothing);
+      expect(tester.takeException(), isNull);
+    }
+  });
 }

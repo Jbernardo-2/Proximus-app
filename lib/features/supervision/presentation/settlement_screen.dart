@@ -140,7 +140,10 @@ class _SettlementScreenState extends ConsumerState<SettlementScreen> {
     final needsNote = difference != null && !difference.isZero && _notes.text.trim().isEmpty;
 
     return Scaffold(
-      appBar: AppBar(title: Text(run.runNumber)),
+      appBar: AppBar(
+        title: Text(run.runNumber),
+        actions: [IconButton(tooltip: 'Revisar paradas', icon: const Icon(Icons.fact_check_outlined), onPressed: () => context.push('/runs/${run.runId}/review'))],
+      ),
       body: Column(children: [
         Expanded(
           child: ListView(padding: const EdgeInsets.all(16), children: [

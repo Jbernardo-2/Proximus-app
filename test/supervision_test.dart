@@ -9,6 +9,7 @@ import 'package:proximus_app/features/supervision/application/supervision_provid
 import 'package:proximus_app/features/supervision/data/supervision_models.dart';
 import 'package:proximus_app/features/preventa/data/preventa_models.dart' show AccountEntry, LocalReceivable;
 import 'package:proximus_app/features/supervision/presentation/credit_screen.dart';
+import 'package:proximus_app/features/supervision/presentation/run_review_screen.dart';
 import 'package:proximus_app/features/supervision/presentation/settlement_screen.dart';
 import 'package:proximus_app/features/supervision/presentation/supervisor_dashboard.dart';
 
@@ -160,6 +161,66 @@ void main() {
     expect(find.textContaining('días de atraso'), findsOneWidget);
     expect(find.text('Registrar abono'), findsOneWidget);
     expect(find.text('−L 100.00'), findsOneWidget, reason: 'a payment lowers the debt');
+    expect(tester.takeException(), isNull);
+  });
+  Map<String, dynamic> stop(String id, int visit, String status, List<Map<String, dynamic>> payments) => {
+    'id': id,
+    'visit_order': visit,
+    'status': status,
+    'status_label': status,
+    'outcome_status_label': status == 'loaded' ? null : 'Entregado',
+    'delivered_total': '100.0000',
+    'order': {'order_number': 'PED-$id', 'customer_name': 'Cliente $id'},
+    'payments': payments,
+  };
+  Map<String, dynamic> payment(String status) => {'id': 'pay-$status', 'method_label': 'Efectivo', 'amount': '100.0000', 'status': status, 'receipt_number': 'REC-1', 'void_reason': status == 'voided' ? 'Doble registro' : null};
+  final reviewRun = {
+    'id': 'run9',
+    'run_number': 'RUT-2026-000050',
+    'status': 'awaiting_settlement',
+    'status_label': 'Por liquidar',
+    'driver_name': 'Carlos',
+    'orders': [
+      stop('b', 2, 'delivered', [payment('active')]),
+      stop('a', 1, 'delivered', [payment('voided')]),
+      stop('c', 3, 'loaded', []),
+    ],
+  };
+
+  test('a stop is reopened only once its payments are voided, and only if it was recorded', () {
+    final stops = stopReviews(reviewRun);
+
+    expect(stops.map((stop) => stop.visitOrder), [1, 2, 3]);
+    expect(stops[0].canReopen, isTrue, reason: 'its only payment was voided');
+    expect(stops[1].canReopen, isFalse, reason: 'it still has an active payment');
+    expect(stops[2].hasOutcome, isFalse, reason: 'the driver has not been there yet');
+  });
+
+  testWidgets('the run review offers to void an active payment and to reopen a stop without one', (tester) async {
+    tester.view.physicalSize = const Size(384 * 3, 820 * 3);
+    tester.view.devicePixelRatio = 3;
+    tester.platformDispatcher.textScaleFactorTestValue = 1.1;
+    addTearDown(tester.view.reset);
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+
+    await tester.pumpWidget(ProviderScope(
+      overrides: [
+        secureStoreProvider.overrideWithValue(MemorySecureStore(null)),
+        apiProvider.overrideWithValue(null),
+        liveResourceProvider('delivery_runs').overrideWith((ref) async => [reviewRun]),
+      ],
+      child: const MaterialApp(home: RunReviewScreen(runId: 'run9')),
+    ));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Anular'), findsOneWidget);
+    expect(find.text('Reabrir parada'), findsOneWidget);
+    expect(find.text('Para reabrirla, anula primero su cobro.'), findsOneWidget);
+    expect(find.textContaining('Anulado: Doble registro'), findsOneWidget);
+    await tester.tap(find.text('Anular'));
+    await tester.pumpAndSettle();
+    final confirm = tester.widget<FilledButton>(find.widgetWithText(FilledButton, 'Anular cobro'));
+    expect(confirm.onPressed, isNull, reason: 'a reason is required');
     expect(tester.takeException(), isNull);
   });
 }

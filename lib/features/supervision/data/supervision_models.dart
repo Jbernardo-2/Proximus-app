@@ -235,3 +235,60 @@ final class Portfolio {
   final int debtors;
   final bool hasMore;
 }
+
+/// A payment of a stop, as the supervisor reviews it.
+final class StopPayment {
+  const StopPayment({required this.id, required this.methodLabel, required this.amount, required this.isActive, this.receiptNumber, this.voidReason});
+
+  factory StopPayment.fromJson(Map<String, dynamic> json) => StopPayment(
+    id: json['id'].toString(),
+    methodLabel: json['method_label']?.toString() ?? '',
+    amount: _d(json['amount']),
+    isActive: json['status'] == 'active',
+    receiptNumber: json['receipt_number']?.toString(),
+    voidReason: json['void_reason']?.toString(),
+  );
+
+  final String id;
+  final String methodLabel;
+  final DecimalValue amount;
+  final bool isActive;
+  final String? receiptNumber;
+  final String? voidReason;
+}
+
+/// A stop of a run on the road, with what was recorded, to correct before settling.
+final class StopReview {
+  const StopReview({required this.runOrderId, required this.visitOrder, required this.orderNumber, required this.customerName, required this.status, required this.statusLabel, required this.delivered, required this.payments});
+
+  factory StopReview.fromJson(Map<String, dynamic> json) => StopReview(
+    runOrderId: json['id'].toString(),
+    visitOrder: (json['visit_order'] as num?)?.toInt() ?? 0,
+    orderNumber: (json['order'] as Map?)?['order_number']?.toString() ?? '',
+    customerName: (json['order'] as Map?)?['customer_name']?.toString() ?? '',
+    status: json['status']?.toString() ?? '',
+    statusLabel: json['outcome_status_label']?.toString() ?? json['status_label']?.toString() ?? '',
+    delivered: _d(json['delivered_total']),
+    payments: [for (final payment in (json['payments'] as List? ?? const []).cast<Map>()) StopPayment.fromJson(payment.cast<String, dynamic>())],
+  );
+
+  final String runOrderId;
+  final int visitOrder;
+  final String orderNumber;
+  final String customerName;
+  final String status;
+  final String statusLabel;
+  final DecimalValue delivered;
+  final List<StopPayment> payments;
+
+  /// The driver already recorded what happened here.
+  bool get hasOutcome => const {'awaiting_payment', 'delivered', 'partially_delivered', 'not_delivered'}.contains(status);
+
+  /// The server reopens a stop only once its payments are voided.
+  bool get canReopen => hasOutcome && payments.every((payment) => !payment.isActive);
+}
+
+/// The stops of a run, in visit order.
+List<StopReview> stopReviews(Map<String, dynamic> run) => [
+  for (final stop in (run['orders'] as List? ?? const []).cast<Map>()) StopReview.fromJson(stop.cast<String, dynamic>()),
+]..sort((a, b) => a.visitOrder.compareTo(b.visitOrder));

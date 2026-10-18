@@ -109,8 +109,9 @@ class RunProgressTile extends StatelessWidget {
         const SizedBox(height: 4),
         LinearProgressIndicator(value: run.progress, minHeight: 5, borderRadius: BorderRadius.circular(3)),
       ]),
-      trailing: run.awaitsSettlement ? const Icon(Icons.point_of_sale_outlined, color: AppColors.brand) : null,
-      onTap: run.awaitsSettlement ? () => context.push('/settlements/${run.id}') : null,
+      trailing: Icon(run.awaitsSettlement ? Icons.point_of_sale_outlined : Icons.chevron_right, color: AppColors.brand),
+      // Back from the road it is settled; on the road its stops can be reviewed and fixed.
+      onTap: () => context.push(run.awaitsSettlement ? '/settlements/${run.id}' : '/runs/${run.id}/review'),
     ),
   );
 }
