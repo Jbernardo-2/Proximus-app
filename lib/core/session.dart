@@ -85,7 +85,8 @@ class Session {
 class SecureStore {
   SecureStore([FlutterSecureStorage? storage]) : _storage = storage ?? const FlutterSecureStorage();
 
-  static const defaultServerUrl = 'http://192.168.101.76/Proximus/public';
+  /// Chosen when building: the client's APK is built with --dart-define=SERVER_URL=https://….
+  static const defaultServerUrl = String.fromEnvironment('SERVER_URL', defaultValue: 'http://192.168.101.76/Proximus/public');
 
   final FlutterSecureStorage _storage;
 
