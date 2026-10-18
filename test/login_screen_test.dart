@@ -41,5 +41,19 @@ void main() {
 
     expect(tester.widget<EditableText>(editableText).obscureText, isFalse);
     expect(find.byTooltip('Ocultar contraseña'), findsOneWidget);
+    expect(find.text('Cambiar servidor'), findsOneWidget, reason: 'development builds can point at any server');
+  });
+
+  testWidgets('the client build offers no way to change the server', (tester) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [secureStoreProvider.overrideWithValue(_FakeSecureStore())],
+        child: MaterialApp(theme: buildTheme(), home: const LoginScreen(canChangeServer: false)),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Cambiar servidor'), findsNothing);
+    expect(find.text('Servidor'), findsNothing);
   });
 }

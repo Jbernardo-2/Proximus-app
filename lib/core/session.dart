@@ -88,6 +88,9 @@ class SecureStore {
   /// Chosen when building: the client's APK is built with --dart-define=SERVER_URL=https://….
   static const defaultServerUrl = String.fromEnvironment('SERVER_URL', defaultValue: 'http://192.168.101.76/Proximus/public');
 
+  /// The client's APK cannot be pointed elsewhere; only development builds let the server be changed.
+  static const serverIsFixed = bool.hasEnvironment('SERVER_URL');
+
   final FlutterSecureStorage _storage;
 
   /// Generated once per installation and never changed: it is what identifies the phone.
@@ -99,7 +102,7 @@ class SecureStore {
     return created;
   }
 
-  Future<String> serverUrl() async => await _read('server_url') ?? defaultServerUrl;
+  Future<String> serverUrl() async => serverIsFixed ? defaultServerUrl : await _read('server_url') ?? defaultServerUrl;
 
   Future<void> saveServerUrl(String url) => _storage.write(key: 'server_url', value: url.trim());
 

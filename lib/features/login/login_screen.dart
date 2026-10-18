@@ -5,9 +5,12 @@ import '../../app/brand.dart';
 import '../../app/providers.dart';
 import '../../app/theme.dart';
 import '../../core/api.dart';
+import '../../core/session.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
-  const LoginScreen({super.key});
+  const LoginScreen({super.key, this.canChangeServer = !SecureStore.serverIsFixed});
+
+  final bool canChangeServer;
 
   @override
   ConsumerState<LoginScreen> createState() => _LoginScreenState();
@@ -57,7 +60,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     } on ApiException catch (error) {
       setState(
         () => _error = error.isNetwork
-            ? 'No se pudo conectar con el servidor. Revisa la señal o la dirección del servidor.'
+            ? widget.canChangeServer
+                  ? 'No se pudo conectar con el servidor. Revisa la señal o la dirección del servidor.'
+                  : 'No se pudo conectar con el servidor. Revisa la señal e inténtalo de nuevo.'
             : error.message,
       );
     } catch (error) {
@@ -164,13 +169,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                             )
                           : const Text('Entrar'),
                     ),
-                    TextButton(
-                      onPressed: () =>
-                          setState(() => _showServer = !_showServer),
-                      child: Text(
-                        _showServer ? 'Ocultar servidor' : 'Cambiar servidor',
+                    if (widget.canChangeServer)
+                      TextButton(
+                        onPressed: () =>
+                            setState(() => _showServer = !_showServer),
+                        child: Text(
+                          _showServer ? 'Ocultar servidor' : 'Cambiar servidor',
+                        ),
                       ),
-                    ),
                   ],
                 ),
               ),
